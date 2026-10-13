@@ -55,6 +55,20 @@ func TestWrapAtRowEnd(t *testing.T) {
 	}
 }
 
+// TestClimbUpIntoRoom checks Joe steps off the top of room 3's ladder onto
+// the floor, as the original does. Reaching the top at y 148, landing must
+// snap him up to 141; snapping without keeping to 4 bits put him back on
+// the ladder, over and over.
+func TestClimbUpIntoRoom(t *testing.T) {
+	g := testGame(t, 7, 115, 69)
+	run(g, 140, joe.Input{Up: true})
+	run(g, 60, joe.Input{})
+	if g.Room != 3 || g.Joe.State != joe.Standing || g.Joe.ScreenY() != 141 {
+		t.Errorf("room %d, state %d, y %d; want standing in room 3 at y 141",
+			g.Room, g.Joe.State, g.Joe.ScreenY())
+	}
+}
+
 func TestClimbDownToConveyor(t *testing.T) {
 	g := testGame(t, pyramid.Start, 116, 53)
 	run(g, 100, joe.Input{Down: true})

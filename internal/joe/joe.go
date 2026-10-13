@@ -436,7 +436,7 @@ func (j *Joe) falling(dx, dy int8, b buffer, r *Rules) {
 	}
 	// Land: snap up so RawY is 4 more than a multiple of 8 ($8A9A).
 	snap := int8(0)
-	for y := j.RawY & 0x0F; y != 4 && y != 12; y-- {
+	for y := j.RawY & 0x0F; y != 4 && y != 12; y = (y - 1) & 0x0F {
 		snap--
 	}
 	if j.RawY >= j.FallStart && j.RawY-j.FallStart >= 28 && j.State != Pole {
