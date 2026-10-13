@@ -1,7 +1,7 @@
 // Command game is the Montezuma's Revenge remake. It draws the original's
 // 100 rooms (from rooms.json, see cmd/rooms) and moves Panama Joe through
-// them the way the original does (internal/joe). Items and enemies are
-// drawn but don't move or interact yet.
+// them the way the original does (internal/joe), with the rooms' enemies
+// (internal/enemy). Items aren't collectable yet.
 //
 // Keys: arrows move and climb; space, Z or X jump. PageUp/PageDown jump to
 // the previous or next room, for testing.
@@ -18,6 +18,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 
+	"montezuma-remake/internal/enemy"
 	"montezuma-remake/internal/joe"
 	"montezuma-remake/internal/pyramid"
 	"montezuma-remake/internal/rom"
@@ -35,15 +36,21 @@ const (
 const startX, startY = 124, 53
 
 type game struct {
-	rooms []roomdata.Room
-	gfx   map[int]*roomGfx
-	rules *joe.Rules
+	rooms      []roomdata.Room
+	gfx        map[int]*roomGfx
+	rules      *joe.Rules
+	enemyRules *enemy.Rules
 
 	room     int
 	row, col int     // the game's row and column; see internal/pyramid
 	joe      joe.Joe // Panama Joe
 	entry    joe.Joe // Joe as he entered the room, to respawn him there
 	lives    int
+
+	enemies  *enemy.State
+	contacts []byte // the room's contact list, killers removed
+	killers  []int  // sprite slots of enemies that killed Joe in this room
+	checkNow bool   // the contact check runs every other frame
 
 	frame      int
 	screenshot string // if set, save frame screenshotFrame here and quit
@@ -77,6 +84,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	enemyRules, err := enemy.RulesFromROM(r)
+	if err != nil {
+		log.Fatal(err)
+	}
 	rooms, err := roomdata.Load(*roomsPath)
 	if err != nil {
 		log.Fatal(err)
@@ -85,7 +96,7 @@ func main() {
 		log.Fatalf("no room %d", *startRoom)
 	}
 
-	g := newGame(rooms, rules, *startRoom)
+	g := newGame(rooms, rules, enemyRules, *startRoom)
 	g.screenshot = *screenshot
 	ebiten.SetWindowSize(screenW*windowScale, screenH*windowScale)
 	if err := ebiten.RunGame(g); err != nil {
@@ -93,8 +104,8 @@ func main() {
 	}
 }
 
-func newGame(rooms []roomdata.Room, rules *joe.Rules, room int) *game {
-	g := &game{rooms: rooms, gfx: map[int]*roomGfx{}, rules: rules}
+func newGame(rooms []roomdata.Room, rules *joe.Rules, enemyRules *enemy.Rules, room int) *game {
+	g := &game{rooms: rooms, gfx: map[int]*roomGfx{}, rules: rules, enemyRules: enemyRules}
 	g.restart(room)
 	return g
 }
@@ -117,7 +128,45 @@ func (g *game) enter(room int) {
 func (g *game) show(room int) {
 	g.room = room
 	g.entry = g.joe
+	g.killers = nil
+	g.loadEnemies()
 	g.title()
+}
+
+// loadEnemies sets up the room's enemies as the original does when it loads
+// the room, leaving out any that have killed Joe here. (The original also
+// moves the survivors into the first free sprite slots, and may start them
+// in a different direction; here they start as the room data has them.)
+func (g *game) loadEnemies() {
+	r := &g.rooms[g.room]
+	s := &enemy.State{Counter: r.FrameCounter, Rules: g.enemyRules}
+	for i := range s.Sprites {
+		b := r.SpriteTable[i*4 : i*4+4]
+		s.Sprites[i] = &enemy.Sprite{Y: b[0], X: b[1], Pattern: b[2], Colour: b[3]}
+	}
+	killed := func(slot int) bool {
+		for _, k := range g.killers {
+			if k == slot {
+				return true
+			}
+		}
+		return false
+	}
+	for i := 0; i+1 < len(r.Objects) && r.Objects[i] != 0xFF; i += 2 {
+		o := [2]byte{r.Objects[i], r.Objects[i+1]}
+		if slot := int(o[0] & 7); killed(slot) {
+			s.Sprites[slot].Colour = 0
+			continue
+		}
+		s.Objects = append(s.Objects, o)
+	}
+	g.contacts = append([]byte(nil), r.Contacts...)
+	for i := 1; i+1 < len(g.contacts); i += 2 {
+		if g.contacts[i+1] == 0xFF && killed((int(g.contacts[i])+4)/4) {
+			g.contacts[i+1] = 0
+		}
+	}
+	g.enemies = s
 }
 
 func (g *game) title() {
@@ -181,13 +230,27 @@ func (g *game) teleport(room int) {
 	g.enter(room)
 }
 
-// step runs one frame of Joe.
+// step runs one frame of the game, in the original's order.
 func (g *game) step(in joe.Input) {
-	before := g.joe
-	exit := g.joe.Step(in, roomTiles{&g.rooms[g.room]}, g.rules)
-	if exit != 0 {
-		g.changeRoom(exit, before)
+	// The contact check runs in the original's main loop, which gets round
+	// to it every other frame, on positions from the end of the last frame.
+	if g.checkNow = !g.checkNow; g.checkNow && g.joe.State < joe.Zapped {
+		if slot := g.enemies.Touching(g.joe.X, g.joe.RawY, g.contacts); slot >= 0 {
+			g.joe.Kill()
+			g.killers = append(g.killers, slot) // gone after the respawn
+		}
 	}
+
+	frozen := g.joe.Frozen > 0 // the pause while a new room is drawn
+	before := g.joe
+	tiles := roomTiles{&g.rooms[g.room]}
+	if exit := g.joe.Step(in, tiles, g.rules); exit != 0 {
+		g.changeRoom(exit, before)
+	} else if !frozen {
+		g.enemies.Counter++
+		g.enemies.Update(tiles, g.joe.Parity, false)
+	}
+
 	if g.joe.Respawn() {
 		g.lives--
 		if g.lives < 0 {
@@ -195,6 +258,7 @@ func (g *game) step(in joe.Input) {
 			return
 		}
 		g.joe = g.entry
+		g.loadEnemies()
 		g.title()
 	}
 }
@@ -237,11 +301,14 @@ func (g *game) Draw(screen *ebiten.Image) {
 	rg := g.roomGfx(g.room)
 	screen.DrawImage(rg.background, nil)
 
-	// Items and enemies as the room loaded; sprite 0 is drawn last, on top.
-	sprites := g.rooms[g.room].Sprites
-	for i := len(sprites) - 1; i >= 0; i-- {
-		s := sprites[i]
-		drawSprite(screen, rg.sprites[s.Pattern/4], s.X, s.Y, s.Colour)
+	// Enemies and other sprites (entries 2-7 of the sprite table); lower
+	// entries have priority, so they're drawn last.
+	for i := len(g.enemies.Sprites) - 1; i >= 2; i-- {
+		s := g.enemies.Sprites[i]
+		if s.Colour == 0 || s.Y == 0xD0 {
+			continue
+		}
+		drawSprite(screen, rg.sprites[s.Pattern/4], int(s.X), int(s.Y)+1, s.Colour)
 	}
 
 	// Joe: his hat and legs, then his body on top.

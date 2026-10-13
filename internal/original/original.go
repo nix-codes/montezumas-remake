@@ -71,11 +71,17 @@ func Start(romPath string, level int) (*Game, error) {
 }
 
 // LoadRoom loads room through the game's own loader, at the room's place in
-// the pyramid.
+// the pyramid. Like the game's own room change ($919A), it first clears the
+// enemy sprite entries, so nothing is left over from the previous room.
 func (g *Game) LoadRoom(room int) error {
 	row, col := pyramid.Position(room)
 	g.Poke(rowVar, byte(row))
 	g.Poke(colVar, byte(col))
+	g.Poke(0x7000, g.Peek(0x7000)|1)
+	g.Poke(0x707A, 0)
+	for a := uint16(0x7308); a < 0x7328; a++ {
+		g.Poke(a, 0)
+	}
 	if err := g.Call(loadRoom, 300); err != nil {
 		return err
 	}
@@ -83,6 +89,36 @@ func (g *Game) LoadRoom(room int) error {
 		return fmt.Errorf("row %d column %d: game loaded room %d, expected %d", row, col, got, room)
 	}
 	return nil
+}
+
+// Enemy state addresses; see roomdata.Room.
+const (
+	ObjectList   = 0x7086
+	ContactList  = 0x72C1
+	SpriteTable  = spriteTable
+	FrameCounter = 0x7097
+)
+
+// Bytes returns n bytes of memory from addr.
+func (g *Game) Bytes(addr uint16, n int) []byte {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = g.Peek(addr + uint16(i))
+	}
+	return b
+}
+
+// Until returns the bytes from addr up to and including the first end.
+func (g *Game) Until(addr uint16, end byte, max int) []byte {
+	var b []byte
+	for i := 0; i < max; i++ {
+		v := g.Peek(addr + uint16(i))
+		b = append(b, v)
+		if v == end {
+			break
+		}
+	}
+	return b
 }
 
 // Room returns the current room number.

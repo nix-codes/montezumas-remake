@@ -90,19 +90,20 @@ func (j *Joe) Place(x, y int) {
 	*j = Joe{X: byte(x), RawY: byte(y - 1), FireLatch: 0x80}
 }
 
-// buffer holds the 3x2 tiles around Joe's feet, as the game reads them
-// into $7057-$705C at the start of each frame ($9156): the row above his
-// feet, then the row at his feet, each left, middle, right.
+// buffer holds the 3x2 tiles around a sprite's feet, as the game reads
+// them into $7057-$705C ($9159): the row above the feet, then the row at
+// the feet, each left, middle, right.
 type buffer [6]byte
 
-func (j *Joe) read(t Tiles) buffer {
-	// $9156: the legs sprite (3 lines below the body) plus (2, 18), turned
-	// into a tile by rounding up ($AFE3), then one row up and one column left.
-	x := int(j.X) + 2 - 1
-	y := (int(j.RawY) + 3 + 18) & 0xFF
-	col := ceil8(x) - 1
-	row := ceil8(y) - 2
-	var b buffer
+// TilesAround reads the 3x2 tiles around the feet of a 16x16 sprite whose
+// attribute Y and X are y and x ($9159). The game uses it for Joe (with his
+// legs sprite) and for every enemy.
+func TilesAround(t Tiles, x, y byte) [6]byte {
+	// Y+18 and X+1, rounded up to a tile ($AFE3), then one row up and one
+	// column left.
+	col := ceil8(int(x)+1) - 1
+	row := ceil8((int(y)+18)&0xFF) - 2
+	var b [6]byte
 	for r := 0; r < 2; r++ {
 		for c := 0; c < 3; c++ {
 			b[r*3+c] = tileAt(t, col+c, row+r)
@@ -111,13 +112,20 @@ func (j *Joe) read(t Tiles) buffer {
 	return b
 }
 
+// read reads the tiles around Joe's legs sprite, 3 lines below his body.
+func (j *Joe) read(t Tiles) buffer { return TilesAround(t, j.X, j.RawY+3) }
+
 func ceil8(v int) int { return ((v + 7) / 8) & 0x1F }
 
+// tileAt reads the name table the way the game does, as one strip of 768
+// bytes: one column past the right edge is the first column of the next
+// row, which matters at the screen's sides.
 func tileAt(t Tiles, col, row int) byte {
-	if col < 0 || col >= 32 || row < 0 || row >= 24 {
+	i := row*32 + col
+	if i < 0 || i >= 32*24 {
 		return tileEmpty
 	}
-	return t.Tile(col, row)
+	return t.Tile(i%32, i/32)
 }
 
 // Exit directions returned by Step.
@@ -513,6 +521,14 @@ func (j *Joe) rope(in Input, b buffer, r *Rules) {
 func (j *Joe) fall(b buffer, r *Rules) {
 	j.FallStart = j.RawY
 	j.commit(Falling, 0, 0, b, r)
+}
+
+// Kill kills Joe on touching an enemy ($8DA2). It does nothing if he's
+// already dying.
+func (j *Joe) Kill() {
+	if j.State < Zapped {
+		j.die(Zapped)
+	}
 }
 
 // die kills Joe ($8AE0 for falls, $8A91 for fire and hazards).

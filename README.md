@@ -48,7 +48,8 @@ cartridge; the last 4 KB can't be checked that way.
 | `internal/roomdata` | The `rooms.json` format shared by `cmd/rooms` and `cmd/game` |
 | `internal/original` | Drives the original on the emulator: start a game, load a room, read or place Joe |
 | `internal/joe` | Joe's movement, translated from the original and tested against it frame by frame |
-| `cmd/game` | The remake: the original's 100 rooms and Joe's movement; items and enemies are static |
+| `internal/enemy` | The rooms' enemies and the contact check, translated from the original and tested against it |
+| `cmd/game` | The remake: the original's 100 rooms, Joe's movement and the enemies; items aren't collectable yet |
 
 ## Notes
 
@@ -76,9 +77,9 @@ cartridge; the last 4 KB can't be checked that way.
   level.
 - `$A067` loads the room at the current row and column; the layout comes from
   the address table at `$9477`. `make rooms` calls it on the emulator for
-  every room and saves the tile map, video tables, items and enemies (Joe
-  left out) and exits (`rooms.json`), a PNG per room and `map.png` of the
-  whole pyramid.
+  every room and saves the tile map, video tables, enemy state (object list,
+  contact list, sprite table, frame counter) and exits (`rooms.json`), a
+  PNG per room and `map.png` of the whole pyramid.
 - Exits are worked out from edge tiles: two open tile rows at a side, or a
   ladder or rope (`$88/$89`, `$10/$11`, `$90`) at the top or bottom. 13 side
   openings and room 13's ladder up into room 7 have no matching opening on
@@ -111,6 +112,26 @@ cartridge; the last 4 KB can't be checked that way.
   by touching enemies.
 - After a room change the original pauses Joe while it draws the new room
   (5-6 frames on the emulator, depending on the room); the remake uses 5.
+
+### Enemies
+
+- Each room's enemies are 2-byte objects at `$7086` (flags with the sprite
+  slot, and a counter), moved every frame by `$A7A1` with the same tile
+  reader as Joe. Kinds: rollers (skulls; flag `$08`), bouncers that follow
+  the arc at `$ABB3` and turn at the screen edges (`$10`), and walkers that
+  climb ladders on certain frames (`$40`; spiders and snakes). They turn at
+  walls, at the end of their floor and near the screen edges; the name table
+  is read as one strip, so one column past the right edge is the next row's
+  first column.
+- The contact check (`$91E5`) runs in the main loop: an enemy kills Joe when
+  their sprites are less than 13 lines and 8 pixels apart, unless his amulet
+  is active (or, not done yet, he has the sword). On the emulator it runs
+  every other frame, on positions from the end of the previous frame. The
+  enemy that killed him is gone after the respawn, until the room is
+  reloaded.
+- `internal/enemy`'s tests move every room's enemies in both games for 300
+  frames, and run Joe and the enemies together through a death, comparing
+  every frame.
 
 ### Graphics
 

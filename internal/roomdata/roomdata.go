@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-
-	"montezuma-remake/internal/coleco"
 )
 
 // Room is one room as the original game draws it.
@@ -19,9 +17,6 @@ type Room struct {
 
 	// Tiles is the screen: 24 rows of 32 tile numbers.
 	Tiles [24][32]byte `json:"tiles"`
-	// Sprites are the room's items and enemies when it has just loaded;
-	// Joe is left out.
-	Sprites []coleco.Sprite `json:"sprites"`
 
 	// The video tables in force in this room: tile patterns (8 bytes per
 	// tile), tile colours (one byte per 8 tiles: foreground in the high
@@ -30,6 +25,16 @@ type Room struct {
 	TileColours    []byte `json:"tileColours"`
 	SpritePatterns []byte `json:"spritePatterns"`
 	Backdrop       int    `json:"backdrop"`
+
+	// The game's enemy state right after the room loads: the object list
+	// ($7086, 2 bytes per enemy, ending at $FF), the list the contact check
+	// walks ($72C1, ending at $FE), the local sprite table ($7300, 8
+	// entries of Y, X, pattern, colour) and the shared frame counter
+	// ($7097). See internal/enemy.
+	Objects      []byte `json:"objects"`
+	Contacts     []byte `json:"contacts"`
+	SpriteTable  []byte `json:"spriteTable"`
+	FrameCounter byte   `json:"frameCounter"`
 }
 
 // Exits lists, per side, the neighbouring room (-1 if none) and where the
@@ -57,8 +62,9 @@ func Load(path string) ([]Room, error) {
 		if r.Number != i {
 			return nil, fmt.Errorf("%s: room %d is at position %d", path, r.Number, i)
 		}
-		if len(r.TilePatterns) != 256*8 || len(r.TileColours) != 32 || len(r.SpritePatterns) != 256*8 {
-			return nil, fmt.Errorf("%s: room %d has no video tables (rerun make rooms)", path, i)
+		if len(r.TilePatterns) != 256*8 || len(r.TileColours) != 32 || len(r.SpritePatterns) != 256*8 ||
+			len(r.SpriteTable) != 32 || len(r.Objects) == 0 {
+			return nil, fmt.Errorf("%s: room %d is missing data (rerun make rooms)", path, i)
 		}
 	}
 	return rooms, nil

@@ -17,7 +17,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"montezuma-remake/internal/coleco"
 	"montezuma-remake/internal/original"
 	"montezuma-remake/internal/pyramid"
 	"montezuma-remake/internal/rom"
@@ -44,15 +43,6 @@ const (
 const (
 	hudRows                   = 5
 	hudLeftEnd, hudRightStart = 12, 22
-)
-
-// The game keeps its sprites in a local table in RAM (address in the
-// cartridge header) and copies them to the video chip in a rotating order
-// to reduce flicker. Joe is always the first two entries (hat and body).
-const (
-	localSpriteTable = 0x7300
-	localSprites     = 8 // the game sets up 8 (INIT_SPR_NM_TBL)
-	joeSprites       = 2
 )
 
 type (
@@ -92,21 +82,19 @@ func main() {
 			log.Fatal(err)
 		}
 		m := g.Machine
-		for i := 0; i < 5; i++ { // let the game place items and enemies
-			if err := m.RunFrame(); err != nil {
-				log.Fatal(err)
-			}
-		}
 		row, col := pyramid.Position(n)
 		room := Room{
 			Number:         n,
 			Row:            row,
 			Column:         col,
-			Sprites:        withoutJoe(m),
 			TilePatterns:   m.VDP.TilePatterns(),
 			TileColours:    m.VDP.TileColours(),
 			SpritePatterns: m.VDP.SpritePatterns(),
 			Backdrop:       int(m.VDP.Reg[7] & 0x0F),
+			Objects:        g.Until(original.ObjectList, 0xFF, 16),
+			Contacts:       g.Until(original.ContactList, 0xFE, 32),
+			SpriteTable:    g.Bytes(original.SpriteTable, 32),
+			FrameCounter:   g.Peek(original.FrameCounter),
 		}
 		names := m.VDP.NameTable()
 		for y := range room.Tiles {
@@ -130,23 +118,6 @@ func main() {
 	writePNG(filepath.Join(dir, "map.png"), pyramidMap(shots))
 	fmt.Printf("saved %d rooms to %s\n", len(rooms), dir)
 	report(rooms)
-}
-
-// withoutJoe returns the visible sprites except Joe's, from the game's local
-// sprite table.
-func withoutJoe(m *coleco.Machine) []coleco.Sprite {
-	var out []coleco.Sprite
-	for i := joeSprites; i < localSprites; i++ {
-		var a [4]byte
-		for j := range a {
-			a[j] = m.Peek(uint16(localSpriteTable + i*4 + j))
-		}
-		if a[0] == 0xD0 || a[3]&0x0F == 0 { // end marker, or transparent
-			continue
-		}
-		out = append(out, m.VDP.DecodeSprite(a[:]))
-	}
-	return out
 }
 
 func findExits(r *Room, floors []byte) Exits {
