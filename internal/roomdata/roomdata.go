@@ -20,7 +20,8 @@ type Room struct {
 
 	// The video tables in force in this room: tile patterns (8 bytes per
 	// tile), tile colours (one byte per 8 tiles: foreground in the high
-	// nibble), sprite patterns, and the backdrop colour.
+	// nibble) as lit, with the torch, sprite patterns, and the backdrop
+	// colour.
 	TilePatterns   []byte `json:"tilePatterns"`
 	TileColours    []byte `json:"tileColours"`
 	SpritePatterns []byte `json:"spritePatterns"`

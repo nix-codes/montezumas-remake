@@ -96,6 +96,12 @@ func main() {
 			SpriteTable:    g.Bytes(original.SpriteTable, 32),
 			FrameCounter:   g.Peek(original.FrameCounter),
 		}
+		// The row's colours are applied on entering the room, after the
+		// enemy state above; capture them lit (the remake darkens rooms).
+		if err := g.SetRoomColours(true); err != nil {
+			log.Fatal(err)
+		}
+		room.TileColours = m.VDP.TileColours()
 		names := m.VDP.NameTable()
 		for y := range room.Tiles {
 			copy(room.Tiles[y][:], names[y*32:])

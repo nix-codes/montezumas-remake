@@ -121,6 +121,25 @@ func (g *Game) Until(addr uint16, end byte, max int) []byte {
 	return b
 }
 
+// SetRoomColours runs the game's room-entry colour routine ($8EB0) the way
+// entering a room does: it applies the row's colours and, in deep rooms
+// without the torch, blacks out the walls. It holds the torch while doing
+// so if lit is true, then puts the inventory back.
+func (g *Game) SetRoomColours(lit bool) error {
+	inv := g.Bytes(0x71B2, 6)
+	if lit {
+		g.Poke(0x71B2, 0x53)
+	}
+	g.Poke(0x70B1, g.Peek(0x70B1)|0x10) // run it on the next frame interrupt
+	in := g.Input
+	err := g.RunFrame()
+	g.Input = in
+	for i, b := range inv {
+		g.Poke(0x71B2+uint16(i), b)
+	}
+	return err
+}
+
 // Room returns the current room number.
 func (g *Game) Room() int { return int(g.Peek(roomVar)) }
 

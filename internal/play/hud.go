@@ -56,3 +56,27 @@ func (g *Game) Display() [24][32]byte {
 	}
 	return s
 }
+
+// darkEntries are the colour table entries the original blacks out in
+// dark rooms ($8EF5): tiles $00-$17 (bricks, floors, conveyors), $80-$9F
+// (ladders, ropes, items) and $A8-$C7 (doors, creatures).
+var darkEntries = []int{0, 1, 2, 16, 17, 18, 19, 21, 22, 23, 24}
+
+// Dark reports whether the room is dark: deep in the pyramid (its row, as
+// the game keeps it, at least 9 minus the level) and Joe has no torch
+// ($8ED8).
+func (g *Game) Dark() bool {
+	return g.Row >= 9-g.Level && !g.Inventory.Has(items.Torch)
+}
+
+// Colours returns the room's tile colour table, darkened if it's dark.
+func (g *Game) Colours() [32]byte {
+	var c [32]byte
+	copy(c[:], g.Rooms[g.Room].TileColours)
+	if g.Dark() {
+		for _, e := range darkEntries {
+			c[e] = 0
+		}
+	}
+	return c
+}

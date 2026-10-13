@@ -251,3 +251,56 @@ func TestRevisit(t *testing.T) {
 		}
 	}
 }
+
+// TestColours checks each room's colours, lit or dark, against the
+// original's room-entry colour routine: rooms from every row, on levels 1
+// and 3 (deeper rows are dark on harder levels), with and without the
+// torch.
+func TestColours(t *testing.T) {
+	r, err := rom.Load(romPath)
+	if err != nil {
+		t.Skip(err)
+	}
+	rules, err := play.RulesFromROM(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dark := 0
+	for _, level := range []int{1, 3} {
+		rooms, err := roomdata.Load(fmt.Sprintf("../../assets/rooms/level%d/rooms.json", level))
+		if err != nil {
+			t.Skip(err)
+		}
+		for _, room := range []int{0, 2, 6, 12, 20, 30, 50, 60, 70, 85, 90, 99} {
+			for _, torch := range []bool{false, true} {
+				o, err := original.Start(romPath, level)
+				if err != nil {
+					t.Skip(err)
+				}
+				if err := o.LoadRoom(room); err != nil {
+					t.Fatal(err)
+				}
+				if torch {
+					o.Poke(inventory, items.Torch)
+				}
+				if err := o.SetRoomColours(false); err != nil {
+					t.Fatal(err)
+				}
+				g := play.New(rooms, rules, level, room)
+				if torch {
+					g.Inventory[0] = items.Torch
+				}
+				if g.Dark() {
+					dark++
+				}
+				got, want := g.Colours(), o.VDP.TileColours()
+				if fmt.Sprintf("% X", got[:]) != fmt.Sprintf("% X", want) {
+					t.Errorf("level %d room %d torch %v: remake % X, original % X", level, room, torch, got[:], want)
+				}
+			}
+		}
+	}
+	if dark == 0 {
+		t.Error("no dark rooms were tested")
+	}
+}
