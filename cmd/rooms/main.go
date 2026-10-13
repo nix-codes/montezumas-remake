@@ -18,19 +18,15 @@ import (
 	"path/filepath"
 
 	"montezuma-remake/internal/coleco"
+	"montezuma-remake/internal/original"
 	"montezuma-remake/internal/pyramid"
 	"montezuma-remake/internal/rom"
 	"montezuma-remake/internal/roomdata"
 )
 
-// Game addresses.
+// Tiles Joe can stand on.
 const (
-	loadRoom  = 0xA067 // loads the room at the current row and column
-	rowVar    = 0x71A7
-	colVar    = 0x71A8
-	roomVar   = 0x7015 // room number computed by the loader
-	flagsVar  = 0x705F // bit 2 is set while Joe descends the entrance pole
-	floorList = 0x93FF // tiles Joe can stand on
+	floorList = 0x93FF
 	floorLen  = 10
 )
 
@@ -74,10 +70,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	cart, err := os.ReadFile(*romPath)
-	if err != nil {
-		log.Fatal(err)
-	}
 	floors, err := r.Slice(floorList, floorLen)
 	if err != nil {
 		log.Fatal(err)
@@ -92,24 +84,20 @@ func main() {
 	for n := range rooms {
 		// Start each room from a fresh game, so one room's state (Joe
 		// falling or dying, say) can't affect the next.
-		m, err := startGame(cart, *level)
+		g, err := original.Start(*romPath, *level)
 		if err != nil {
 			log.Fatal(err)
 		}
-		row, col := pyramid.Position(n)
-		m.Poke(rowVar, byte(row))
-		m.Poke(colVar, byte(col))
-		if err := m.Call(loadRoom, 300); err != nil {
-			log.Fatalf("room %d: %v", n, err)
+		if err := g.LoadRoom(n); err != nil {
+			log.Fatal(err)
 		}
+		m := g.Machine
 		for i := 0; i < 5; i++ { // let the game place items and enemies
 			if err := m.RunFrame(); err != nil {
 				log.Fatal(err)
 			}
 		}
-		if got := int(m.Peek(roomVar)); got != n {
-			log.Fatalf("row %d column %d: game loaded room %d, expected %d", row, col, got, n)
-		}
+		row, col := pyramid.Position(n)
 		room := Room{
 			Number:         n,
 			Row:            row,
@@ -159,25 +147,6 @@ func withoutJoe(m *coleco.Machine) []coleco.Sprite {
 		out = append(out, m.VDP.DecodeSprite(a[:]))
 	}
 	return out
-}
-
-// startGame boots the cartridge, selects a level and waits until Joe has
-// slid down the entrance pole into the first room.
-func startGame(cart []byte, level int) (*coleco.Machine, error) {
-	m := coleco.New(cart)
-	for f := 0; f < 2000; f++ {
-		m.Input = coleco.Joystick{Key: -1}
-		if f >= 160 && f <= 170 {
-			m.Input.Key = level
-		}
-		if err := m.RunFrame(); err != nil {
-			return nil, err
-		}
-		if f > 200 && m.Peek(flagsVar)&0x04 == 0 {
-			return m, nil
-		}
-	}
-	return nil, fmt.Errorf("game didn't start")
 }
 
 func findExits(r *Room, floors []byte) Exits {

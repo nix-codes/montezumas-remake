@@ -1,10 +1,10 @@
 // Command game is the Montezuma's Revenge remake. It draws the original's
-// 100 rooms (from rooms.json, see cmd/rooms) and lets Panama Joe walk,
-// fall and climb between them. Movement is still a placeholder, not yet
-// matched to the original; items and enemies are drawn but don't move.
+// 100 rooms (from rooms.json, see cmd/rooms) and moves Panama Joe through
+// them the way the original does (internal/joe). Items and enemies are
+// drawn but don't move or interact yet.
 //
-// Keys: arrows move and climb. PageUp/PageDown jump to the previous or
-// next room, for testing.
+// Keys: arrows move and climb; space, Z or X jump. PageUp/PageDown jump to
+// the previous or next room, for testing.
 package main
 
 import (
@@ -18,7 +18,7 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 
-	"montezuma-remake/internal/gfx"
+	"montezuma-remake/internal/joe"
 	"montezuma-remake/internal/pyramid"
 	"montezuma-remake/internal/rom"
 	"montezuma-remake/internal/roomdata"
@@ -27,46 +27,23 @@ import (
 
 const (
 	screenW, screenH = 256, 192 // TMS9918A resolution
-	cols, rows       = screenW / 8, screenH / 8
 	windowScale      = 3
+	startLives       = 5
 )
-
-// Tiles with special meaning. Floors come from the ROM (floorList).
-const (
-	tileLadder      = 0x88 // left half; 0x89 is the right half
-	tileLadderFloor = 0x10 // ladder top set into a floor; 0x11 right half
-	tileRope        = 0x90
-)
-
-// hudTiles draw the lives and inventory boxes; Joe can't pass them.
-var hudTiles = []byte{0x09, 0x0A, 0x0B, 0x0C, 0x6F}
-
-const (
-	floorList = 0x93FF // tiles Joe can stand on
-	floorLen  = 10
-)
-
-// Sprite numbers in the boot sprite set (see assets/sprites.png).
-var (
-	walkFrames  = []int{13, 19, 27, 19} // facing right; mirrored for left
-	climbFrames = []int{21, 25}
-)
-
-// Joe is drawn in one colour until his two-sprite frames are worked out.
-const joeColour = 6 // red
 
 // Joe lands here in the starting room after sliding down the entrance pole.
-const startX, startY = 120, 9*8 - 16
+const startX, startY = 124, 53
 
 type game struct {
-	rooms   []roomdata.Room
-	gfx     map[int]*roomGfx
-	joeImgs [64]*ebiten.Image
-	solid   map[byte]bool
+	rooms []roomdata.Room
+	gfx   map[int]*roomGfx
+	rules *joe.Rules
 
 	room     int
-	row, col int // the game's row and column; see internal/pyramid
-	joe      player
+	row, col int     // the game's row and column; see internal/pyramid
+	joe      joe.Joe // Panama Joe
+	entry    joe.Joe // Joe as he entered the room, to respawn him there
+	lives    int
 
 	frame      int
 	screenshot string // if set, save frame screenshotFrame here and quit
@@ -74,19 +51,16 @@ type game struct {
 
 const screenshotFrame = 30
 
-type player struct {
-	x, y      int // top-left of the 16x16 sprite
-	left      bool
-	climbing  bool
-	animTick  int
-	animFrame int
-}
-
 // roomGfx is a room's pre-rendered background and sprite images.
 type roomGfx struct {
 	background *ebiten.Image
 	sprites    [64]*ebiten.Image // indexed by pattern/4, white; tinted when drawn
 }
+
+// roomTiles lets Joe read a room's tile map.
+type roomTiles struct{ r *roomdata.Room }
+
+func (t roomTiles) Tile(col, row int) byte { return t.r.Tiles[row][col] }
 
 func main() {
 	romPath := flag.String("rom", "build/montezuma.rom", "assembled ROM")
@@ -99,11 +73,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	boot, err := gfx.Boot(r)
-	if err != nil {
-		log.Fatal(err)
-	}
-	floors, err := r.Slice(floorList, floorLen)
+	rules, err := joe.RulesFromROM(r)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -115,32 +85,25 @@ func main() {
 		log.Fatalf("no room %d", *startRoom)
 	}
 
-	g := newGame(rooms, floors)
+	g := newGame(rooms, rules, *startRoom)
 	g.screenshot = *screenshot
-	for s := range g.joeImgs {
-		img := image.NewRGBA(image.Rect(0, 0, 16, 16))
-		boot.DrawSprite16(img, s*4, 0, 0, vdp.Palette[joeColour])
-		g.joeImgs[s] = ebiten.NewImageFromImage(img)
-	}
-	g.enter(*startRoom)
-
 	ebiten.SetWindowSize(screenW*windowScale, screenH*windowScale)
 	if err := ebiten.RunGame(g); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func newGame(rooms []roomdata.Room, floors []byte) *game {
-	g := &game{
-		rooms: rooms,
-		gfx:   map[int]*roomGfx{},
-		solid: map[byte]bool{},
-		joe:   player{x: startX, y: startY},
-	}
-	for _, t := range append(append([]byte(nil), floors...), hudTiles...) {
-		g.solid[t] = true
-	}
+func newGame(rooms []roomdata.Room, rules *joe.Rules, room int) *game {
+	g := &game{rooms: rooms, gfx: map[int]*roomGfx{}, rules: rules}
+	g.restart(room)
 	return g
+}
+
+// restart starts a new game in room.
+func (g *game) restart(room int) {
+	g.lives = startLives
+	g.joe.Place(startX, startY)
+	g.enter(room)
 }
 
 // enter switches to room at its own place in the pyramid.
@@ -149,10 +112,17 @@ func (g *game) enter(room int) {
 	g.show(room)
 }
 
-// show switches to room, keeping the current row and column.
+// show switches to room, keeping the current row and column, and remembers
+// Joe as he comes in, as the original does for respawning.
 func (g *game) show(room int) {
 	g.room = room
-	ebiten.SetWindowTitle(fmt.Sprintf("Montezuma's Revenge - room %d (row %d, column %d)", room, g.row, g.col))
+	g.entry = g.joe
+	g.title()
+}
+
+func (g *game) title() {
+	ebiten.SetWindowTitle(fmt.Sprintf("Montezuma's Revenge - room %d (row %d, column %d) - lives %d",
+		g.room, g.row, g.col, g.lives))
 }
 
 // roomGfx renders a room's graphics the first time it's shown.
@@ -182,34 +152,6 @@ func (g *game) roomGfx(n int) *roomGfx {
 	return rg
 }
 
-func (g *game) tileAt(px, py int) byte {
-	x, y := px/8, py/8
-	if px < 0 || x >= cols || py < 0 || y >= rows {
-		return 0 // off screen: open, so Joe can leave the room
-	}
-	return g.rooms[g.room].Tiles[y][x]
-}
-
-func (g *game) solidAt(px, py int) bool { return g.solid[g.tileAt(px, py)] }
-
-func ladder(t byte) bool {
-	return t == tileLadder || t == tileLadder+1 || t == tileLadderFloor || t == tileLadderFloor+1
-}
-
-func climbable(t byte) bool { return ladder(t) || t == tileRope }
-
-// climbX returns where Joe hangs on the ladder or rope at pixel column px.
-func climbX(t byte, px int) int {
-	c := px / 8
-	switch t {
-	case tileLadder + 1, tileLadderFloor + 1:
-		c-- // right half of a two-tile ladder
-	case tileRope:
-		return c*8 - 4
-	}
-	return c * 8
-}
-
 func (g *game) Update() error {
 	g.frame++
 	if g.screenshot != "" && g.frame > screenshotFrame {
@@ -217,118 +159,77 @@ func (g *game) Update() error {
 	}
 	switch {
 	case inpututil.IsKeyJustPressed(ebiten.KeyPageDown):
-		g.enter((g.room + 1) % len(g.rooms))
+		g.teleport((g.room + 1) % len(g.rooms))
 	case inpututil.IsKeyJustPressed(ebiten.KeyPageUp):
-		g.enter((g.room + len(g.rooms) - 1) % len(g.rooms))
+		g.teleport((g.room + len(g.rooms) - 1) % len(g.rooms))
 	}
-	g.move(input{
-		left:  ebiten.IsKeyPressed(ebiten.KeyArrowLeft),
-		right: ebiten.IsKeyPressed(ebiten.KeyArrowRight),
-		up:    ebiten.IsKeyPressed(ebiten.KeyArrowUp),
-		down:  ebiten.IsKeyPressed(ebiten.KeyArrowDown),
+	g.step(joe.Input{
+		Left:  ebiten.IsKeyPressed(ebiten.KeyArrowLeft),
+		Right: ebiten.IsKeyPressed(ebiten.KeyArrowRight),
+		Up:    ebiten.IsKeyPressed(ebiten.KeyArrowUp),
+		Down:  ebiten.IsKeyPressed(ebiten.KeyArrowDown),
+		Fire: ebiten.IsKeyPressed(ebiten.KeySpace) || ebiten.IsKeyPressed(ebiten.KeyZ) ||
+			ebiten.IsKeyPressed(ebiten.KeyX),
 	})
-	g.leaveRoom()
 	return nil
 }
 
-type input struct{ left, right, up, down bool }
+// teleport moves to room for testing, with Joe standing where he was.
+func (g *game) teleport(room int) {
+	x, y := g.joe.X, g.joe.ScreenY()
+	g.joe.Place(int(x), y)
+	g.enter(room)
+}
 
-// move is placeholder movement: walking, falling and climbing.
-func (g *game) move(in input) {
-	j := &g.joe
-	left, right, up, down := in.left, in.right, in.up, in.down
-
-	cx := j.x + 8
-	standing := g.solidAt(j.x+4, j.y+16) || g.solidAt(j.x+11, j.y+16)
-	moved := false
-
-	// Start or continue climbing on a ladder or rope.
-	if t := g.tileAt(cx, j.y+15); up && climbable(t) {
-		j.climbing, j.x = true, climbX(t, cx)
-	} else if t := g.tileAt(cx, j.y+16); down && climbable(t) {
-		j.climbing, j.x = true, climbX(t, cx)
+// step runs one frame of Joe.
+func (g *game) step(in joe.Input) {
+	before := g.joe
+	exit := g.joe.Step(in, roomTiles{&g.rooms[g.room]}, g.rules)
+	if exit != 0 {
+		g.changeRoom(exit, before)
 	}
-	if j.climbing {
-		switch {
-		case up && climbable(g.tileAt(j.x+8, j.y+15)):
-			j.y--
-			moved = true
-		case down && climbable(g.tileAt(j.x+8, j.y+16)):
-			j.y++
-			moved = true
+	if g.joe.Respawn() {
+		g.lives--
+		if g.lives < 0 {
+			g.restart(pyramid.Start)
+			return
 		}
-		// Let go once nothing to climb is behind or under Joe, or when he
-		// steps sideways while his feet are on a floor.
-		if !climbable(g.tileAt(j.x+8, j.y+15)) && !climbable(g.tileAt(j.x+8, j.y+16)) {
-			j.climbing = false
-		}
-		if (left || right) && standing {
-			j.climbing = false
-		}
-	}
-
-	if !j.climbing {
-		switch {
-		case left && !g.solidAt(j.x+3, j.y+8) && !g.solidAt(j.x+3, j.y+15):
-			j.x--
-			j.left, moved = true, true
-		case right && !g.solidAt(j.x+12, j.y+8) && !g.solidAt(j.x+12, j.y+15):
-			j.x++
-			j.left, moved = false, true
-		}
-		if !standing {
-			j.y += 2
-			for g.solidAt(j.x+4, j.y+15) || g.solidAt(j.x+11, j.y+15) {
-				j.y-- // landed inside the floor; back out
-			}
-		}
-	}
-
-	if moved {
-		j.animTick++
-		if j.animTick%6 == 0 {
-			j.animFrame++
-		}
+		g.joe = g.entry
+		g.title()
 	}
 }
 
-// leaveRoom moves to the next room when Joe goes off an edge, using the
-// game's row and column arithmetic.
-func (g *game) leaveRoom() {
-	j := &g.joe
+// changeRoom follows Joe out of the room, using the game's row and column
+// arithmetic. Where the original would leave the pyramid (or, at the
+// bottom, start the next level, which isn't done yet), Joe stays put.
+func (g *game) changeRoom(exit int, before joe.Joe) {
 	row, col := g.row, g.col
-	dx, dy := 0, 0
-	switch {
-	case j.x < -8:
-		col, dx = col-1, screenW
-	case j.x > screenW-8:
-		col, dx = col+1, -screenW
-	case j.y < -8:
-		row, dy = row-1, screenH
-	case j.y > screenH-8:
-		row, dy = row+1, -screenH
-	default:
-		return
+	switch exit {
+	case joe.ExitLeft:
+		col--
+	case joe.ExitRight:
+		col++
+	case joe.ExitUp:
+		row--
+	case joe.ExitDown:
+		row++
 	}
-
-	// The entrance hall's pole leads to the starting room and back.
 	next := pyramid.Room(row, col)
+	// The entrance hall's pole leads to the starting room and back.
 	switch {
-	case g.room == pyramid.Entrance && dy < 0:
-		row, col = pyramid.Position(pyramid.Start)
+	case g.room == pyramid.Entrance && exit == joe.ExitDown:
 		next = pyramid.Start
-	case g.room == pyramid.Start && dy > 0:
-		row, col = pyramid.Position(pyramid.Entrance)
+		row, col = pyramid.Position(next)
+	case g.room == pyramid.Start && exit == joe.ExitUp:
 		next = pyramid.Entrance
+		row, col = pyramid.Position(next)
 	}
-	if next < 0 { // off the top, or below the bottom row (next level: not yet)
-		j.x = min(max(j.x, -8), screenW-8)
-		j.y = min(max(j.y, -8), screenH-8)
+	if next < 0 {
+		g.joe = before
+		g.joe.DX, g.joe.DY = 0, 0
 		return
 	}
 	g.row, g.col = row, col
-	j.x += dx
-	j.y += dy
 	g.show(next)
 }
 
@@ -340,31 +241,31 @@ func (g *game) Draw(screen *ebiten.Image) {
 	sprites := g.rooms[g.room].Sprites
 	for i := len(sprites) - 1; i >= 0; i-- {
 		s := sprites[i]
-		op := &ebiten.DrawImageOptions{}
-		op.GeoM.Translate(float64(s.X), float64(s.Y))
-		c := vdp.Palette[s.Colour]
-		op.ColorScale.Scale(float32(c.R)/255, float32(c.G)/255, float32(c.B)/255, 1)
-		screen.DrawImage(rg.sprites[s.Pattern/4], op)
+		drawSprite(screen, rg.sprites[s.Pattern/4], s.X, s.Y, s.Colour)
 	}
 
-	j := &g.joe
-	frames := walkFrames
-	if j.climbing {
-		frames = climbFrames
-	}
-	op := &ebiten.DrawImageOptions{}
-	if j.left && !j.climbing {
-		op.GeoM.Scale(-1, 1)
-		op.GeoM.Translate(16, 0)
-	}
-	op.GeoM.Translate(float64(j.x), float64(j.y))
-	screen.DrawImage(g.joeImgs[frames[j.animFrame%len(frames)]], op)
+	// Joe: his hat and legs, then his body on top.
+	body, legs, legsDY := g.joe.Sprites()
+	x, y := int(g.joe.X), g.joe.ScreenY()
+	drawSprite(screen, rg.sprites[legs], x, y+legsDY, joe.LegsColour)
+	drawSprite(screen, rg.sprites[body], x, y, joe.BodyColour)
 
 	if g.screenshot != "" && g.frame == screenshotFrame {
 		if err := saveScreenshot(screen, g.screenshot); err != nil {
 			log.Fatal(err)
 		}
 	}
+}
+
+func drawSprite(screen, img *ebiten.Image, x, y int, colour byte) {
+	if y > screenH {
+		y -= 256 // partly off the top, as the video chip wraps
+	}
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(float64(x), float64(y))
+	c := vdp.Palette[colour]
+	op.ColorScale.Scale(float32(c.R)/255, float32(c.G)/255, float32(c.B)/255, 1)
+	screen.DrawImage(img, op)
 }
 
 func saveScreenshot(screen *ebiten.Image, path string) error {

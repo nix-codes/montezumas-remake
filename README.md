@@ -17,7 +17,7 @@ compilable disassembly in
 make rom       # assemble original/ into build/montezuma.rom
 make extract   # write tiles.png, sprites.png and loader-calls.txt to assets/
 make rooms     # capture all rooms of levels 1-3 to assets/rooms/
-make run       # play the remake: arrows move, PageUp/PageDown jump rooms
+make run       # play the remake: arrows move, space/Z/X jump, PageUp/PageDown jump rooms
 make original  # play the original ROM on the built-in emulator
 make test
 ```
@@ -46,7 +46,9 @@ cartridge; the last 4 KB can't be checked that way.
 | `cmd/rooms` | Loads every room through the original game and saves tile maps, sprites and exits |
 | `cmd/dis` | Disassembles ROM ranges the disassembly left as raw bytes |
 | `internal/roomdata` | The `rooms.json` format shared by `cmd/rooms` and `cmd/game` |
-| `cmd/game` | The remake: the original's 100 rooms, moving between them like the original; placeholder movement, static items and enemies |
+| `internal/original` | Drives the original on the emulator: start a game, load a room, read or place Joe |
+| `internal/joe` | Joe's movement, translated from the original and tested against it frame by frame |
+| `cmd/game` | The remake: the original's 100 rooms and Joe's movement; items and enemies are static |
 
 ## Notes
 
@@ -84,6 +86,25 @@ cartridge; the last 4 KB can't be checked that way.
 - The levels share the layouts except rooms 6, 7, 9 and 72.
 - Floor tiles Joe can stand on are listed at `$93FF`; other tile classes
   are at `$9412`, `$943C` and `$A00E` (not yet identified).
+
+### Joe
+
+- Joe is two sprites: his body (red) and, 3 lines lower, his hat, face and
+  legs (yellow). His state is at `$7079`, velocity at `$7076/$7077`; the
+  state machine dispatches at `$8901` through a table at `$8913`.
+- Each frame the game reads the 3x2 tiles around his feet (`$9156`), runs
+  the state's handler, applies the velocity unless a wall (`$943C`) is in
+  the way, then checks the screen edges. `internal/joe` follows the same
+  steps with the same 8-bit variables.
+- Measured: walking 2 px/frame, falling 4 px/frame, the jump arc from the
+  table at `$93AE`, falls of 28+ px kill, conveyors (`$9412`) push 1 px
+  every other frame, ladders 1 px/frame with a stutter when stepping down
+  onto one.
+- `internal/joe`'s comparison test runs 13 scenarios on both games and
+  checks Joe's position and state every frame. Not translated yet: ropes
+  and poles, and dying by touching enemies.
+- After a room change the original pauses Joe while it draws the new room
+  (5-6 frames on the emulator, depending on the room); the remake uses 5.
 
 ### Graphics
 
