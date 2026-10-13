@@ -289,14 +289,15 @@ func contains(list []byte, t byte) bool {
 	return false
 }
 
-// Touching reports the sprite slot of the first enemy Joe is touching, or
-// -1 ($9228-$9265). joeX and joeY are his body sprite's X and attribute Y.
-// contacts is the room's contact list ($72C1): after its first byte, pairs
-// of (offset, kind) ending in kind $FE; kind $FF is an enemy whose sprite
-// is offset bytes after Joe's second sprite entry. Enemies touch Joe when
-// they are visible, less than 13 lines apart and less than 8 pixels apart.
-func (s *State) Touching(joeX, joeY byte, contacts []byte) int {
-	for i := 1; i+1 < len(contacts); i += 2 {
+// Touching reports the sprite slot of the first enemy Joe is touching and
+// its entry in the contact list, or -1, -1 ($9228-$9265). joeX and joeY are
+// his body sprite's X and attribute Y. contacts is the room's contact list
+// ($72C1): after its first byte, pairs of (offset, kind) ending in kind
+// $FE; kind $FF is an enemy whose sprite is offset bytes after Joe's
+// second sprite entry. Enemies touch Joe when they are visible, less than
+// 13 lines apart and less than 8 pixels apart.
+func (s *State) Touching(joeX, joeY byte, contacts []byte) (slot, entry int) {
+	for i, n := 1, 0; i+1 < len(contacts); i, n = i+2, n+1 {
 		offset, kind := contacts[i], contacts[i+1]
 		if kind == 0xFE {
 			break
@@ -310,10 +311,10 @@ func (s *State) Touching(joeX, joeY byte, contacts []byte) int {
 		}
 		spr := s.Sprites[slot]
 		if absDiff(joeY, spr.Y) < 13 && absDiff(joeX, spr.X) < 8 && spr.Colour != 0 {
-			return slot
+			return slot, n
 		}
 	}
-	return -1
+	return -1, -1
 }
 
 func absDiff(a, b byte) byte {

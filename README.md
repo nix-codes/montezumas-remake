@@ -49,7 +49,9 @@ cartridge; the last 4 KB can't be checked that way.
 | `internal/original` | Drives the original on the emulator: start a game, load a room, read or place Joe |
 | `internal/joe` | Joe's movement, translated from the original and tested against it frame by frame |
 | `internal/enemy` | The rooms' enemies and the contact check, translated from the original and tested against it |
-| `cmd/game` | The remake: the original's 100 rooms, Joe's movement and the enemies; items aren't collectable yet |
+| `internal/items` | Items, doors and static creatures (tiles), the inventory, and restoring rooms on revisits |
+| `internal/play` | The game: state and one frame of play in the original's order, with the HUD; tested against the original |
+| `cmd/game` | Shows `internal/play` in a window and feeds it the keyboard |
 
 ## Notes
 
@@ -132,6 +134,30 @@ cartridge; the last 4 KB can't be checked that way.
 - `internal/enemy`'s tests move every room's enemies in both games for 300
   frames, and run Joe and the enemies together through a death, comparing
   every frame.
+
+### Items
+
+- Items, doors and static creatures are tiles. A room's contact list gives
+  each one's top-left position; a per-room bitmap (`$70C0`, one bit per
+  entry) remembers what's been collected, opened or removed, so revisited
+  rooms load without them (items gone, doors open, enemies and creatures
+  that killed Joe removed).
+- The main loop's task table (`$A8A1`) runs the contact check every 2
+  frames, the item task (`$8F5F`) every 4, and movement every frame. The
+  item task opens a door beside Joe if he has its key (3 colours, 300
+  points), kills him on a creature tile (`$A0-$A7`) unless the amulet is on,
+  or picks up the item at his body: keys (50), sword (50), torch (3000),
+  jewel (1000, not kept), amulet (100; protects for 160 contact checks).
+- The inventory (`$71B2`) holds 5 items; its sixth byte must stay empty
+  (`$A56C` relies on it). The sword is used up killing an enemy (2000 for
+  white ones, 3000 others).
+- HUD: inventory icons from the table at `$9FD2`, spare lives as hats, the
+  level and a 6-digit score in big digits.
+- `internal/play`'s tests run 9 item scenarios against the original,
+  comparing the whole screen, Joe, the inventory, the score and the enemies
+  every frame, and check revisited rooms load the same.
+- Not done: the torch lighting dark rooms (its effect hasn't been traced),
+  and the amulet's border flash.
 
 ### Graphics
 

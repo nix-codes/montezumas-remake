@@ -99,10 +99,7 @@ type buffer [6]byte
 // attribute Y and X are y and x ($9159). The game uses it for Joe (with his
 // legs sprite) and for every enemy.
 func TilesAround(t Tiles, x, y byte) [6]byte {
-	// Y+18 and X+1, rounded up to a tile ($AFE3), then one row up and one
-	// column left.
-	col := ceil8(int(x)+1) - 1
-	row := ceil8((int(y)+18)&0xFF) - 2
+	col, row := TilesOrigin(x, y)
 	var b [6]byte
 	for r := 0; r < 2; r++ {
 		for c := 0; c < 3; c++ {
@@ -111,6 +108,17 @@ func TilesAround(t Tiles, x, y byte) [6]byte {
 	}
 	return b
 }
+
+// TilesOrigin returns the column and row of the top-left tile TilesAround
+// reads: X+1 and Y+18 rounded up to a tile ($AFE3), then one column left
+// and one row up.
+func TilesOrigin(x, y byte) (col, row int) {
+	return ceil8(int(x)+1) - 1, ceil8((int(y)+18)&0xFF) - 2
+}
+
+// TileAt reads the tile at (col, row) the way the game does, treating the
+// name table as one strip (see tileAt).
+func TileAt(t Tiles, col, row int) byte { return tileAt(t, col, row) }
 
 // read reads the tiles around Joe's legs sprite, 3 lines below his body.
 func (j *Joe) read(t Tiles) buffer { return TilesAround(t, j.X, j.RawY+3) }

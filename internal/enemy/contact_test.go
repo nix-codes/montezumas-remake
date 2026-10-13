@@ -63,7 +63,7 @@ func TestKilledByEnemy(t *testing.T) {
 		// The check sees where everyone was at the end of the last frame,
 		// and takes effect before Joe moves.
 		if checks > before && j.State < joe.Zapped {
-			if s.Touching(j.X, j.RawY, contacts) >= 0 {
+			if slot, _ := s.Touching(j.X, j.RawY, contacts); slot >= 0 {
 				j.Kill()
 			}
 		}
