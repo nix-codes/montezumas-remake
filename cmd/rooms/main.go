@@ -20,6 +20,7 @@ import (
 	"montezuma-remake/internal/coleco"
 	"montezuma-remake/internal/pyramid"
 	"montezuma-remake/internal/rom"
+	"montezuma-remake/internal/roomdata"
 )
 
 // Game addresses.
@@ -49,26 +50,19 @@ const (
 	hudLeftEnd, hudRightStart = 12, 22
 )
 
-// Room is one room of the pyramid.
-type Room struct {
-	Number  int             `json:"number"`
-	Row     int             `json:"row"`
-	Column  int             `json:"column"`
-	Exits   Exits           `json:"exits"`
-	Tiles   [24][32]byte    `json:"tiles"`
-	Sprites []coleco.Sprite `json:"sprites"`
-}
+// The game keeps its sprites in a local table in RAM (address in the
+// cartridge header) and copies them to the video chip in a rotating order
+// to reduce flicker. Joe is always the first two entries (hat and body).
+const (
+	localSpriteTable = 0x7300
+	localSprites     = 8 // the game sets up 8 (INIT_SPR_NM_TBL)
+	joeSprites       = 2
+)
 
-// Exits lists, per side, the neighbouring room (-1 if none) and where the
-// openings are: tile rows for left and right, tile columns for up and down.
-// Drop marks gaps in the bottom edge that Joe can fall through.
-type Exits struct {
-	Left, Right, Up, Down int
-	LeftRows, RightRows   []int `json:",omitempty"`
-	UpColumns             []int `json:",omitempty"`
-	DownColumns           []int `json:",omitempty"`
-	DropColumns           []int `json:",omitempty"`
-}
+type (
+	Room  = roomdata.Room
+	Exits = roomdata.Exits
+)
 
 func main() {
 	romPath := flag.String("rom", "build/montezuma.rom", "assembled ROM")
@@ -116,10 +110,19 @@ func main() {
 		if got := int(m.Peek(roomVar)); got != n {
 			log.Fatalf("row %d column %d: game loaded room %d, expected %d", row, col, got, n)
 		}
-		room := Room{Number: n, Row: row, Column: col, Sprites: m.VDP.Sprites()}
-		base := int(m.VDP.Reg[2]&0x0F) << 10
+		room := Room{
+			Number:         n,
+			Row:            row,
+			Column:         col,
+			Sprites:        withoutJoe(m),
+			TilePatterns:   m.VDP.TilePatterns(),
+			TileColours:    m.VDP.TileColours(),
+			SpritePatterns: m.VDP.SpritePatterns(),
+			Backdrop:       int(m.VDP.Reg[7] & 0x0F),
+		}
+		names := m.VDP.NameTable()
 		for y := range room.Tiles {
-			copy(room.Tiles[y][:], m.VDP.VRAM[base+y*32:])
+			copy(room.Tiles[y][:], names[y*32:])
 		}
 		room.Exits = findExits(&room, floors)
 		rooms[n] = room
@@ -139,6 +142,23 @@ func main() {
 	writePNG(filepath.Join(dir, "map.png"), pyramidMap(shots))
 	fmt.Printf("saved %d rooms to %s\n", len(rooms), dir)
 	report(rooms)
+}
+
+// withoutJoe returns the visible sprites except Joe's, from the game's local
+// sprite table.
+func withoutJoe(m *coleco.Machine) []coleco.Sprite {
+	var out []coleco.Sprite
+	for i := joeSprites; i < localSprites; i++ {
+		var a [4]byte
+		for j := range a {
+			a[j] = m.Peek(uint16(localSpriteTable + i*4 + j))
+		}
+		if a[0] == 0xD0 || a[3]&0x0F == 0 { // end marker, or transparent
+			continue
+		}
+		out = append(out, m.VDP.DecodeSprite(a[:]))
+	}
+	return out
 }
 
 // startGame boots the cartridge, selects a level and waits until Joe has

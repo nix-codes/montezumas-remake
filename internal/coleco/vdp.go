@@ -34,6 +34,26 @@ func (v *VDP) patternBase() int    { return int(v.Reg[4]&0x07) << 11 }
 func (v *VDP) spriteAttrBase() int { return int(v.Reg[5]&0x7F) << 7 }
 func (v *VDP) spriteGenBase() int  { return int(v.Reg[6]&0x07) << 11 }
 
+// TilePatterns returns a copy of the tile pattern table.
+func (v *VDP) TilePatterns() []byte {
+	return append([]byte(nil), v.VRAM[v.patternBase():v.patternBase()+256*8]...)
+}
+
+// TileColours returns a copy of the Graphics I colour table.
+func (v *VDP) TileColours() []byte {
+	return append([]byte(nil), v.VRAM[v.colourBase():v.colourBase()+32]...)
+}
+
+// SpritePatterns returns a copy of the sprite pattern table.
+func (v *VDP) SpritePatterns() []byte {
+	return append([]byte(nil), v.VRAM[v.spriteGenBase():v.spriteGenBase()+256*8]...)
+}
+
+// NameTable returns a copy of the name table: 24 rows of 32 tile numbers.
+func (v *VDP) NameTable() []byte {
+	return append([]byte(nil), v.VRAM[v.nameBase():v.nameBase()+768]...)
+}
+
 func (v *VDP) interruptsEnabled() bool { return v.Reg[1]&0x20 != 0 }
 
 // WriteData handles a write to the data port.
@@ -119,21 +139,27 @@ func (v *VDP) Sprites() []Sprite {
 		if a[0] == 0xD0 {
 			break
 		}
-		y := int(a[0]) + 1
-		if y > 0xE0 {
-			y -= 256 // partly off the top
-		}
-		x := int(a[1])
-		if a[3]&0x80 != 0 { // early clock
-			x -= 32
-		}
-		p := int(a[2])
-		if v.Reg[1]&0x02 != 0 { // 16x16: pattern number ignores low bits
-			p &^= 3
-		}
-		out = append(out, Sprite{X: x, Y: y, Pattern: p, Colour: a[3] & 0x0F})
+		out = append(out, v.DecodeSprite(a))
 	}
 	return out
+}
+
+// DecodeSprite decodes a 4-byte sprite attribute entry (Y, X, pattern,
+// colour) as the chip would display it.
+func (v *VDP) DecodeSprite(a []byte) Sprite {
+	y := int(a[0]) + 1
+	if y > 0xE0 {
+		y -= 256 // partly off the top
+	}
+	x := int(a[1])
+	if a[3]&0x80 != 0 { // early clock
+		x -= 32
+	}
+	p := int(a[2])
+	if v.Reg[1]&0x02 != 0 { // 16x16: pattern number ignores low bits
+		p &^= 3
+	}
+	return Sprite{X: x, Y: y, Pattern: p, Colour: a[3] & 0x0F}
 }
 
 func (v *VDP) spriteSize() int {

@@ -17,7 +17,7 @@ compilable disassembly in
 make rom       # assemble original/ into build/montezuma.rom
 make extract   # write tiles.png, sprites.png and loader-calls.txt to assets/
 make rooms     # capture all rooms of levels 1-3 to assets/rooms/
-make run       # play the remake sandbox (arrow keys)
+make run       # play the remake: arrows move, PageUp/PageDown jump rooms
 make original  # play the original ROM on the built-in emulator
 make test
 ```
@@ -25,7 +25,8 @@ make test
 `make original` keys: arrows = joystick, Z/X = left/right fire, 0-9 = keypad
 (press 1, 2 or 3 on the title screen to pick a level).
 
-`go run ./cmd/game -screenshot out.png` saves an early frame and exits.
+`go run ./cmd/game -room N` starts in room N; `-screenshot out.png` saves an
+early frame and exits.
 
 The first 8 KB of the assembled ROM matches MAME's checksum for the original
 cartridge; the last 4 KB can't be checked that way.
@@ -44,7 +45,8 @@ cartridge; the last 4 KB can't be checked that way.
 | `internal/pyramid` | Room layout of the pyramid and the game's room arithmetic |
 | `cmd/rooms` | Loads every room through the original game and saves tile maps, sprites and exits |
 | `cmd/dis` | Disassembles ROM ranges the disassembly left as raw bytes |
-| `cmd/game` | Ebitengine game: for now a hand-built test room with placeholder movement |
+| `internal/roomdata` | The `rooms.json` format shared by `cmd/rooms` and `cmd/game` |
+| `cmd/game` | The remake: the original's 100 rooms, moving between them like the original; placeholder movement, static items and enemies |
 
 ## Notes
 
@@ -72,8 +74,9 @@ cartridge; the last 4 KB can't be checked that way.
   level.
 - `$A067` loads the room at the current row and column; the layout comes from
   the address table at `$9477`. `make rooms` calls it on the emulator for
-  every room and saves the tile map, sprites and exits (`rooms.json`), a PNG
-  per room and `map.png` of the whole pyramid.
+  every room and saves the tile map, video tables, items and enemies (Joe
+  left out) and exits (`rooms.json`), a PNG per room and `map.png` of the
+  whole pyramid.
 - Exits are worked out from edge tiles: two open tile rows at a side, or a
   ladder or rope (`$88/$89`, `$10/$11`, `$90`) at the top or bottom. 13 side
   openings and room 13's ladder up into room 7 have no matching opening on

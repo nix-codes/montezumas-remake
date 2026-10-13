@@ -1,6 +1,7 @@
 SJASMPLUS ?= sjasmplus
 ASM       := original/montezumas-revenge.asm
 ROM       := build/montezuma.rom
+ROOMS     := assets/rooms/level1/rooms.json
 
 .PHONY: all rom extract rooms run original test clean
 
@@ -21,8 +22,11 @@ extract: $(ROM)
 rooms: $(ROM)
 	for l in 1 2 3; do go run ./cmd/rooms -rom $(ROM) -level $$l; done
 
-run: $(ROM)
-	go run ./cmd/game -rom $(ROM)
+$(ROOMS): $(ROM)
+	go run ./cmd/rooms -rom $(ROM) -level 1
+
+run: $(ROM) $(ROOMS)
+	go run ./cmd/game -rom $(ROM) -rooms $(ROOMS)
 
 original: $(ROM)
 	go run ./cmd/original -rom $(ROM)
