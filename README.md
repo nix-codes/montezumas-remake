@@ -156,8 +156,25 @@ cartridge; the last 4 KB can't be checked that way.
 - `internal/play`'s tests run 9 item scenarios against the original,
   comparing the whole screen, Joe, the inventory, the score and the enemies
   every frame, and check revisited rooms load the same.
-- Not done: the torch lighting dark rooms (its effect hasn't been traced),
-  and the amulet's border flash.
+- Dark rooms: rows at least 9 minus the level are dark without the torch
+  (the room-entry routine at `$8EB0` blanks colour entries).
+- Not done: the amulet's border flash.
+
+### Treasure room and next level
+
+- Room 90's floor has a gap: falling through it, below the pyramid, enters
+  the treasure room and empties the inventory. Column 10 is a shaft of
+  screens; while its timer runs (240 contact checks) each screen gets 25
+  chains and a line of jewels placed by reading ROM bytes at a pointer
+  that moves every frame (`$7047`). Other columns have a wall and a pole
+  down one side. Once time is up, jumping off a chain is fast and redraws
+  the screen.
+- Leaving the bottom while sliding down a pole starts the next level:
+  harder (up to 9), every room reset. The original slides Joe down the
+  entrance pole again; the remake starts him in the starting room.
+  Levels past 3 use level 3's room data.
+- Tests compare falling through the treasure room (several screens) and
+  catching a side pole into the next level against the original.
 
 ### Graphics
 

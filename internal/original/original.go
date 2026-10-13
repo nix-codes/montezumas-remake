@@ -173,6 +173,14 @@ func (g *Game) PlaceJoe(x, y int) {
 	g.Poke(spriteTable+5, byte(x))
 }
 
+// ResetJoe places Joe at (x, y), standing still.
+func (g *Game) ResetJoe(x, y int) {
+	g.PlaceJoe(x, y)
+	g.Poke(joeState, Standing)
+	g.Poke(joeDX, 0)
+	g.Poke(joeDY, 0)
+}
+
 // Step runs one frame with the given input.
 func (g *Game) Step(in coleco.Joystick) error {
 	in.Key = -1

@@ -80,6 +80,13 @@ type Joe struct {
 	DeathTimer    int  // $70A9: frames left before he respawns
 	Frozen        int  // frames left of the pause after changing room
 	AnimTick      int  // frames he has moved, for walking and climbing animation
+
+	// Set by the game: Joe is in the treasure room below the pyramid
+	// ($705F bit 5), and its time is up ($70AC is 1).
+	Treasure, TimeUp bool
+	// Set by Step when Joe jumps off a chain after the treasure room's time
+	// is up: the game redraws the screen ($705F bit 3).
+	Redraw bool
 }
 
 // ScreenY returns the top of Joe's body sprite on screen.
@@ -478,18 +485,31 @@ func (j *Joe) ladder(in Input, b buffer, r *Rules) {
 // rope handles state 4 ($8D02).
 func (j *Joe) rope(in Input, b buffer, r *Rules) {
 	if j.jumpPressed(in) {
+		var dx int8
 		switch {
 		case in.Left:
-			j.jump(-2, b, r)
-			return
+			dx = -2
 		case in.Right:
-			j.jump(2, b, r)
+			dx = 2
+		}
+		if dx != 0 {
+			if j.Treasure && j.TimeUp {
+				// Time's up in the treasure room: a fast jump, and a new
+				// screen ($8D1B).
+				j.Redraw = true
+				dx *= 2
+			}
+			j.jump(dx, b, r)
 			return
 		}
 	}
 	if b[1] == tileEmpty {
 		// Above the top of the rope ($8C9C).
 		switch {
+		case j.Treasure && in.Up:
+			j.commit(Rope, 0, 0, b, r)
+		case j.Treasure:
+			j.ropeBottom(in, b, r)
 		case in.Up:
 			j.fall(b, r) // let go ($8CC5)
 		case in.Down:
@@ -503,8 +523,23 @@ func (j *Joe) rope(in Input, b buffer, r *Rules) {
 		}
 		return
 	}
+	j.ropeBottom(in, b, r)
+}
+
+// ropeBottom continues the rope handler at $8D55: off the bottom of the
+// rope, or on it.
+func (j *Joe) ropeBottom(in Input, b buffer, r *Rules) {
 	switch t := b[4]; {
 	case t == tileEmpty || t == tileRopeEnd1 || t == tileRopeEnd2:
+		if j.Treasure {
+			// No dropping off in the treasure room: up climbs back ($8D3E).
+			if in.Up {
+				j.commit(Rope, 0, -2, b, r)
+			} else {
+				j.commit(Rope, 0, 0, b, r)
+			}
+			return
+		}
 		// Off the bottom of the rope: drop, harmlessly ($8D65).
 		j.FallStart = safeFallStart
 		j.commit(Falling, 0, 0, b, r)

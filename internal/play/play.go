@@ -26,11 +26,13 @@ const (
 	itemPeriod    = 4
 )
 
-// Rules are the original's tables.
+// Rules are the original's tables, and the ROM itself, which the treasure
+// room reads for random numbers.
 type Rules struct {
 	Joe   *joe.Rules
 	Enemy *enemy.Rules
 	Items *items.Rules
+	ROM   *rom.ROM
 }
 
 // RulesFromROM reads every table from the cartridge.
@@ -47,7 +49,7 @@ func RulesFromROM(r *rom.ROM) (*Rules, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Rules{Joe: j, Enemy: e, Items: i}, nil
+	return &Rules{Joe: j, Enemy: e, Items: i, ROM: r}, nil
 }
 
 // Game is a game in progress.
@@ -71,6 +73,22 @@ type Game struct {
 
 	Enemies  *enemy.State
 	Contacts []byte
+
+	// The treasure room ($705F bit 5) and its timer ($70AC), and the
+	// pointer it reads random numbers from ($7047), which moves every
+	// frame.
+	Treasure      bool
+	TreasureTimer int
+	Random        uint16
+
+	setupPending bool // draw a new treasure screen on the next frame
+	// TreasureScreens counts treasure screens drawn. (The original takes
+	// two frames to draw one; the tests skip comparing that frame.)
+	TreasureScreens int
+
+	// LevelRooms, if set, gives the rooms for each level, for when a new
+	// level starts.
+	LevelRooms func(level int) []roomdata.Room
 
 	// Main-loop task countdowns: a task runs when its count is 1.
 	ContactTimer, ItemTimer int
@@ -106,6 +124,7 @@ func New(rooms []roomdata.Room, rules *Rules, level, room int) *Game {
 func (g *Game) Restart(room int) {
 	g.Lives = StartLives
 	g.Score = 0
+	g.Treasure = false
 	g.Inventory = items.NewInventory()
 	g.Amulet = 0
 	g.Done = [pyramid.Rooms]uint16{}
@@ -159,6 +178,7 @@ func (g *Game) load() {
 	}
 	g.Enemies = s
 	g.Rules.Items.Restore(g.itemRoom(), done)
+	g.RedrawHUD()
 }
 
 func (g *Game) itemRoom() *items.Room {
@@ -168,6 +188,18 @@ func (g *Game) itemRoom() *items.Room {
 // Step runs one frame, in the original's order: the main loop's contact
 // and item tasks, then the enemies and Joe.
 func (g *Game) Step(in joe.Input) {
+	// The frame interrupt: set up a pending treasure screen, then move the
+	// random pointer. Drawing chains and jewels takes the whole frame: the
+	// pointer doesn't move, and the main loop's tasks, Joe included, don't
+	// run. An empty screen (time up) is quick.
+	if g.setupPending {
+		g.setupPending = false
+		g.treasureScreen()
+		if g.TreasureTimer != 1 {
+			return
+		}
+	}
+	g.Random++
 	if g.tick(&g.ContactTimer, contactPeriod) {
 		g.contactTask()
 	}
@@ -177,7 +209,13 @@ func (g *Game) Step(in joe.Input) {
 
 	frozen := g.Joe.Frozen > 0 // the pause while a new room is drawn
 	before := g.Joe
-	if exit := g.Joe.Step(in, &g.Tiles, g.Rules.Joe); exit != 0 {
+	g.Joe.Treasure, g.Joe.TimeUp = g.Treasure, g.TreasureTimer == 1
+	exit := g.Joe.Step(in, &g.Tiles, g.Rules.Joe)
+	if g.Joe.Redraw {
+		g.Joe.Redraw = false
+		g.setupPending = true
+	}
+	if exit != 0 {
 		g.changeRoom(exit, before)
 	} else if !frozen {
 		g.Enemies.Counter++
@@ -208,6 +246,9 @@ func (g *Game) tick(count *int, period int) bool {
 // whether an enemy touches Joe. With the sword he kills it; without, it
 // kills him. Either way it's gone for good.
 func (g *Game) contactTask() {
+	if g.TreasureTimer > 1 {
+		g.TreasureTimer--
+	}
 	if g.Joe.State >= joe.Zapped {
 		return
 	}
@@ -216,7 +257,9 @@ func (g *Game) contactTask() {
 			return
 		}
 	}
-	g.Inventory.Remove(items.Amulet)
+	if g.Inventory.Remove(items.Amulet) {
+		g.RedrawHUD()
+	}
 
 	slot, entry := g.Enemies.Touching(g.Joe.X, g.Joe.RawY, g.Contacts)
 	if slot < 0 {
@@ -231,6 +274,7 @@ func (g *Game) contactTask() {
 			g.Score += items.PointsEnemy
 		}
 		spr.Colour = 0
+		g.RedrawHUD()
 		return
 	}
 	g.Joe.Kill()
@@ -254,6 +298,9 @@ func (g *Game) itemTask() {
 	if res.KillJoe {
 		g.Joe.Kill()
 	}
+	if res.Picked != 0 || res.Opened {
+		g.RedrawHUD()
+	}
 }
 
 // changeRoom follows Joe out of the room, using the game's row and column
@@ -271,6 +318,11 @@ func (g *Game) changeRoom(exit int, before joe.Joe) {
 	case joe.ExitDown:
 		row++
 	}
+	if row >= pyramid.Rows {
+		g.enterBelow(row, col)
+		return
+	}
+	g.Treasure = false
 	next := pyramid.Room(row, col)
 	// The entrance hall's pole leads to the starting room and back.
 	switch {

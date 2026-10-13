@@ -64,6 +64,10 @@ var scenarios = []scenario{
 		expect(func(g *play.Game) bool { return g.Inventory[0] == items.Empty && g.Score == 1000 })},
 	{"pick up the torch", 31, 116, 53, nil, 30, func(f int) joe.Input { return joe.Input{Fire: f == 1} },
 		expect(func(g *play.Game) bool { return g.Inventory[0] == items.Torch && g.Score == 3000 })},
+	{"fall into the treasure room", 90, 124, 120, []byte{items.KeyRed}, 300, hold(joe.Input{}),
+		expect(func(g *play.Game) bool {
+			return g.Treasure && g.Inventory[0] == items.Empty && g.Score >= 1000 && g.Row > 10
+		})},
 	{"inventory full: the key stays", 2, 37, 101,
 		[]byte{items.Sword, items.Sword, items.Sword, items.Sword, items.Sword}, 40,
 		func(f int) joe.Input { return joe.Input{Fire: f == 1} },
@@ -102,7 +106,15 @@ func TestMatchesOriginal(t *testing.T) {
 			if err := o.LoadRoom(sc.room); err != nil {
 				t.Fatal(err)
 			}
-			o.PlaceJoe(sc.x, sc.y)
+			// Let the original finish setting the room up: its main loop
+			// waits a few frames after a room loads. Joe waits on a floor
+			// meanwhile, so he can't fall or pick anything up.
+			placeOnFloor(o)
+			for f := 0; f < 10; f++ {
+				if err := o.Step(coleco.Joystick{}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			for i, c := range sc.carry {
 				o.Poke(inventory+uint16(i), c)
 			}
@@ -111,13 +123,7 @@ func TestMatchesOriginal(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			// Let the original finish setting the room up: its main loop
-			// waits a few frames after a room loads.
-			for f := 0; f < 10; f++ {
-				if err := o.Step(coleco.Joystick{}); err != nil {
-					t.Fatal(err)
-				}
-			}
+			o.ResetJoe(sc.x, sc.y)
 
 			g := play.New(rooms, rules, 1, sc.room)
 			g.Joe.Place(sc.x, sc.y)
@@ -125,6 +131,7 @@ func TestMatchesOriginal(t *testing.T) {
 			for i, c := range sc.carry {
 				g.Inventory[i] = c
 			}
+			g.RedrawHUD()
 			sync(g, o)
 
 			for f := 0; f < sc.frames; f++ {
@@ -132,8 +139,11 @@ func TestMatchesOriginal(t *testing.T) {
 				if err := o.Step(coleco.Joystick{Up: in.Up, Down: in.Down, Left: in.Left, Right: in.Right, FireLeft: in.Fire}); err != nil {
 					t.Fatal(err)
 				}
+				drawn := g.TreasureScreens
 				g.Step(in)
-				if msg := compare(g, o); msg != "" {
+				// The original spreads drawing a treasure screen over two
+				// frames; compare the screen once it's finished.
+				if msg := compare(g, o, g.TreasureScreens == drawn); msg != "" {
 					t.Fatalf("frame %d: %s", f, msg)
 				}
 			}
@@ -157,13 +167,14 @@ func sync(g *play.Game, o *original.Game) {
 	g.ContactTimer = int(o.Peek(contactTimer))
 	g.ItemTimer = int(o.Peek(itemTimer))
 	g.Enemies.Counter = o.Peek(original.FrameCounter)
+	g.Random = uint16(o.Peek(0x7047)) | uint16(o.Peek(0x7048))<<8
 	for i := range g.Enemies.Sprites {
 		b := o.Bytes(uint16(original.SpriteTable+4*i), 4)
 		*g.Enemies.Sprites[i] = struct{ Y, X, Pattern, Colour byte }{b[0], b[1], b[2], b[3]}
 	}
 }
 
-func compare(g *play.Game, o *original.Game) string {
+func compare(g *play.Game, o *original.Game, tiles bool) string {
 	j := o.Joe()
 	if got, want := fmt.Sprintf("x=%d y=%d state=%d", g.Joe.X, g.Joe.ScreenY(), g.Joe.State),
 		fmt.Sprintf("x=%d y=%d state=%d", j.X, j.Y, j.State); got != want {
@@ -178,7 +189,7 @@ func compare(g *play.Game, o *original.Game) string {
 	screen := g.Display()
 	names := o.VDP.NameTable()
 	for i, want := range names {
-		if got := screen[i/32][i%32]; got != want {
+		if got := screen[i/32][i%32]; tiles && got != want {
 			return fmt.Sprintf("tile at row %d col %d: remake %02X, original %02X", i/32, i%32, got, want)
 		}
 	}
@@ -191,6 +202,29 @@ func compare(g *play.Game, o *original.Game) string {
 		}
 	}
 	return ""
+}
+
+// placeOnFloor stands Joe on the first floor tile (scanning down from the
+// top of the play area) with open space above.
+func placeOnFloor(o *original.Game) {
+	names := o.VDP.NameTable()
+	floors := o.Bytes(0x93FF, 10)
+	isFloor := func(t byte) bool {
+		for _, f := range floors {
+			if f == t {
+				return true
+			}
+		}
+		return false
+	}
+	for row := 7; row < 23; row++ {
+		for col := 2; col < 30; col++ {
+			if isFloor(names[row*32+col]) && names[(row-1)*32+col] == 0 && names[(row-2)*32+col] == 0 {
+				o.ResetJoe(col*8-5, row*8-19)
+				return
+			}
+		}
+	}
 }
 
 func bcd(b []byte) int {

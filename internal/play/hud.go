@@ -9,18 +9,19 @@ const (
 	tileDigitBot = 0x28
 )
 
-// Display returns the screen: the room's tiles with the HUD drawn over them
-// as the original draws it: the inventory in the left box ($A548), spare
-// lives below it ($AABB), the level and the score on the right ($AEFE).
-func (g *Game) Display() [24][32]byte {
-	s := g.Tiles.T
-	for row := 1; row <= 2; row++ {
+// Display returns the screen. The HUD is part of it, drawn the way and at
+// the moments the original draws it.
+func (g *Game) Display() [24][32]byte { return g.Tiles.T }
+
+// RedrawHUD redraws the whole HUD into the screen, as the original does when
+// a room loads and when the inventory changes ($A548): the score and
+// level, the inventory box, and the spare lives (not in the treasure room).
+func (g *Game) RedrawHUD() {
+	g.drawScore()
+	for row := 1; row <= 3; row++ {
 		for col := 1; col <= 10; col++ {
-			s[row][col] = 0
+			g.Tiles.SetTile(col, row, 0)
 		}
-	}
-	for col := 1; col <= 8; col++ {
-		s[3][col] = 0
 	}
 	for i, code := range g.Inventory {
 		if code == items.Empty {
@@ -28,17 +29,32 @@ func (g *Game) Display() [24][32]byte {
 		}
 		t := g.Rules.Items.Icon(code)
 		col := 1 + 2*i
-		if col+1 >= 32 {
-			break
-		}
-		s[1][col], s[1][col+1], s[2][col], s[2][col+1] = t[0], t[1], t[2], t[3]
+		g.Tiles.SetTile(col, 1, t[0])
+		g.Tiles.SetTile(col+1, 1, t[1])
+		g.Tiles.SetTile(col, 2, t[2])
+		g.Tiles.SetTile(col+1, 2, t[3])
 	}
-	for i := 0; i < g.Lives && i < 8; i++ {
-		s[3][1+i] = tileLife
+	if g.Treasure {
+		return
 	}
+	// Spare lives ($AABB): up to 10 hats on the left, more on the right.
+	for col := 1; col <= 8; col++ {
+		g.Tiles.SetTile(col, 3, 0)
+		g.Tiles.SetTile(22+col, 3, 0)
+	}
+	for i := 0; i < g.Lives && i < 10; i++ {
+		g.Tiles.SetTile(1+i, 3, tileLife)
+	}
+	for i := 10; i < g.Lives && i < 18; i++ {
+		g.Tiles.SetTile(23+i-10, 3, tileLife)
+	}
+}
 
-	s[1][20] = tileDigitTop + byte(g.Level)
-	s[2][20] = tileDigitBot + byte(g.Level)
+// drawScore redraws the level and the 6-digit score, leading zeros blank
+// ($AEFE).
+func (g *Game) drawScore() {
+	g.Tiles.SetTile(20, 1, tileDigitTop+byte(g.Level))
+	g.Tiles.SetTile(20, 2, tileDigitBot+byte(g.Level))
 	score := g.Score % 1000000
 	digits := [6]int{}
 	for i := 5; i >= 0; i-- {
@@ -52,9 +68,9 @@ func (g *Game) Display() [24][32]byte {
 			leading = false
 			top, bot = tileDigitTop+byte(d), tileDigitBot+byte(d)
 		}
-		s[1][24+i], s[2][24+i] = top, bot
+		g.Tiles.SetTile(24+i, 1, top)
+		g.Tiles.SetTile(24+i, 2, bot)
 	}
-	return s
 }
 
 // darkEntries are the colour table entries the original blacks out in
@@ -64,9 +80,9 @@ var darkEntries = []int{0, 1, 2, 16, 17, 18, 19, 21, 22, 23, 24}
 
 // Dark reports whether the room is dark: deep in the pyramid (its row, as
 // the game keeps it, at least 9 minus the level) and Joe has no torch
-// ($8ED8).
+// ($8ED8). The treasure room is never dark.
 func (g *Game) Dark() bool {
-	return g.Row >= 9-g.Level && !g.Inventory.Has(items.Torch)
+	return !g.Treasure && g.Row >= 9-g.Level && !g.Inventory.Has(items.Torch)
 }
 
 // Colours returns the room's tile colour table, darkened if it's dark.

@@ -12,6 +12,7 @@ import (
 	"image/png"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -53,7 +54,7 @@ type roomGfx struct {
 
 func main() {
 	romPath := flag.String("rom", "build/montezuma.rom", "assembled ROM")
-	roomsPath := flag.String("rooms", "assets/rooms/level1/rooms.json", "rooms from cmd/rooms")
+	roomsDir := flag.String("rooms", "assets/rooms", "directory of per-level rooms.json from cmd/rooms")
 	startRoom := flag.Int("room", pyramid.Start, "room to start in")
 	screenshot := flag.String("screenshot", "", "save a PNG of an early frame to this path and exit")
 	flag.Parse()
@@ -66,16 +67,29 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	rooms, err := roomdata.Load(*roomsPath)
-	if err != nil {
-		log.Fatal(err)
+	// Rooms for each level; levels past 3 use level 3's (the original's
+	// rooms differ between levels only in a few details).
+	levels := map[int][]roomdata.Room{}
+	levelRooms := func(level int) []roomdata.Room {
+		level = min(level, 3)
+		if levels[level] == nil {
+			rooms, err := roomdata.Load(filepath.Join(*roomsDir, fmt.Sprintf("level%d", level), "rooms.json"))
+			if err != nil {
+				log.Fatal(err)
+			}
+			levels[level] = rooms
+		}
+		return levels[level]
 	}
+	rooms := levelRooms(1)
 	if *startRoom < 0 || *startRoom >= len(rooms) {
 		log.Fatalf("no room %d", *startRoom)
 	}
 
+	g := play.New(rooms, rules, 1, *startRoom)
+	g.LevelRooms = levelRooms
 	w := &window{
-		g:          play.New(rooms, rules, 1, *startRoom),
+		g:          g,
 		gfx:        map[int]*roomGfx{},
 		background: ebiten.NewImage(screenW, screenH),
 		pixels:     image.NewRGBA(image.Rect(0, 0, screenW, screenH)),
@@ -127,8 +141,8 @@ func (w *window) Update() error {
 		Fire: ebiten.IsKeyPressed(ebiten.KeySpace) || ebiten.IsKeyPressed(ebiten.KeyZ) ||
 			ebiten.IsKeyPressed(ebiten.KeyX),
 	})
-	if t := fmt.Sprintf("Montezuma's Revenge - room %d (row %d, column %d) - lives %d - score %d",
-		g.Room, g.Row, g.Col, g.Lives, g.Score); t != w.title {
+	if t := fmt.Sprintf("Montezuma's Revenge - level %d - room %d (row %d, column %d) - lives %d - score %d",
+		g.Level, g.Room, g.Row, g.Col, g.Lives, g.Score); t != w.title {
 		ebiten.SetWindowTitle(t)
 		w.title = t
 	}
@@ -146,7 +160,7 @@ func (w *window) Draw(screen *ebiten.Image) {
 	g := w.g
 	rg := w.roomGfx(g.Room)
 	if s, c := g.Display(), g.Colours(); s != w.drawn || g.Room != w.drawnRoom || c != w.drawnCols {
-		backdrop := g.Rooms[g.Room].Backdrop
+		backdrop := g.Backdrop()
 		rg.vram.Colours = c
 		for y := range s {
 			for x, t := range s[y] {
