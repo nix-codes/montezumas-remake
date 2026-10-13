@@ -247,8 +247,12 @@ func (g *game) Draw(screen *ebiten.Image) {
 	// Joe: his hat and legs, then his body on top.
 	body, legs, legsDY := g.joe.Sprites()
 	x, y := int(g.joe.X), g.joe.ScreenY()
-	drawSprite(screen, rg.sprites[legs], x, y+legsDY, joe.LegsColour)
-	drawSprite(screen, rg.sprites[body], x, y, joe.BodyColour)
+	if legs < 0 {
+		drawSprite(screen, rg.sprites[body], x, y, joe.GhostColour)
+	} else {
+		drawSprite(screen, rg.sprites[legs], x, y+legsDY, joe.LegsColour)
+		drawSprite(screen, rg.sprites[body], x, y, joe.BodyColour)
+	}
 
 	if g.screenshot != "" && g.frame == screenshotFrame {
 		if err := saveScreenshot(screen, g.screenshot); err != nil {

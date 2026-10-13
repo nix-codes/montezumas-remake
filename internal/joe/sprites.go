@@ -33,8 +33,9 @@ func RulesFromROM(r *rom.ROM) (*Rules, error) {
 
 // Sprite colours.
 const (
-	BodyColour = 6  // red
-	LegsColour = 11 // yellow
+	BodyColour  = 6  // red
+	LegsColour  = 11 // yellow
+	GhostColour = 14 // grey: burnt Joe, a single sprite
 )
 
 // walkRight and walkLeft are the walking cycles, one frame every 4 steps:
@@ -46,7 +47,8 @@ var (
 
 // Sprites returns the sprite numbers (pattern / 4) of Joe's body and of his
 // hat and legs, and where the legs sprite goes relative to the body: 3
-// lines below, or above in the death pose. Measured from the original.
+// lines below, or above in the death pose. Burnt, he is one grey sprite and
+// legs is -1. Measured from the original.
 func (j *Joe) Sprites() (body, legs, legsDY int) {
 	frame := j.AnimTick / 4
 	left := j.Facing < 0
@@ -61,8 +63,17 @@ func (j *Joe) Sprites() (body, legs, legsDY int) {
 			return 21, 46, 3
 		}
 		return 22, 47, 3
+	case Rope:
+		if frame%2 == 0 {
+			return 23, 48, 3
+		}
+		return 24, 49, 3
+	case Pole:
+		return 25, 50, 3
 	case Dead:
 		return 26, 52, -3
+	case Burnt:
+		return 30, -1, 0
 	case Walking:
 		cycle := walkRight
 		if left {

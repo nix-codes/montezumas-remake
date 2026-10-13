@@ -100,9 +100,15 @@ cartridge; the last 4 KB can't be checked that way.
   table at `$93AE`, falls of 28+ px kill, conveyors (`$9412`) push 1 px
   every other frame, ladders 1 px/frame with a stutter when stepping down
   onto one.
-- `internal/joe`'s comparison test runs 13 scenarios on both games and
-  checks Joe's position and state every frame. Not translated yet: ropes
-  and poles, and dying by touching enemies.
+- Ropes (`$90`, state 4): grab one from above with down on its top tile
+  (`$C4`; Joe drops 12 or 4 px, a quirk of the original), or with a running
+  jump past its first 3 frames. Down slides 1 px/frame, up climbs at half
+  speed, fire with left/right jumps off, and dropping off the bottom never
+  hurts. Poles (`$95`, state 5) are caught the same way and slid down at
+  4 px/frame.
+- `internal/joe`'s comparison test runs 21 scenarios on both games and
+  checks Joe's position and state every frame. Not translated yet: dying
+  by touching enemies.
 - After a room change the original pauses Joe while it draws the new room
   (5-6 frames on the emulator, depending on the room); the remake uses 5.
 

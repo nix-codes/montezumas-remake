@@ -3,9 +3,7 @@
 // $8929-$8DE7) and keeps the game's own 8-bit coordinates and variables, so
 // it can be checked frame by frame against the original on the emulator.
 //
-// Not yet translated: ropes and poles (grabbing them, and state 4), and
-// dying by touching enemies. Joe passes through ropes, and hangs still if he
-// ever ends up in state 4.
+// Not yet translated: dying by touching enemies.
 package joe
 
 // States, as in $7079.
@@ -38,7 +36,13 @@ const (
 	tilePole        = 0x95
 	tileRopeTop     = 0xC4
 	tileZap         = 0xE0
+	tileRopeEnd1    = 0x98 // with tileEmpty: nothing to hold below a rope
+	tileRopeEnd2    = 0xD8
 )
+
+// safeFallStart is the fall start the game sets when Joe drops off the
+// bottom of a rope, so the drop can't hurt him ($8D70).
+const safeFallStart = 0xA0
 
 // Rules holds the tile tables and the jump arc from the ROM.
 type Rules struct {
@@ -140,12 +144,15 @@ func (j *Joe) Step(in Input, t Tiles, r *Rules) (exit int) {
 		j.jumping(b, r)
 	case Ladder:
 		j.ladder(in, b, r)
+	case Rope:
+		j.rope(in, b, r)
 	case Falling, Pole:
 		j.falling(0, 4, b, r)
-	case Zapped, Dead, Burnt:
+	case Burnt:
+		j.RawY-- // his ghost rises ($8B6E)
 		j.dead()
-	default: // ropes aren't translated yet: hang still
-		j.commit(j.State, 0, 0, b, r)
+	case Zapped, Dead:
+		j.dead()
 	}
 	j.move(b, r)
 	if exit = j.exit(); exit != 0 {
@@ -269,15 +276,18 @@ func (j *Joe) jumpPressed(in Input) bool {
 // alignLadder snaps Joe onto a ladder ($8B20).
 func (j *Joe) alignLadder() { j.align(0x0F, 0x07) }
 
-// alignRope snaps Joe onto a rope or pole ($8B27).
-func (j *Joe) alignRope() { j.align(0x0C, 0x04) }
+// alignRope snaps Joe onto a rope or pole ($8B27). It returns the offset it
+// used, which the game leaves in a register that one caller then uses as
+// Joe's vertical speed.
+func (j *Joe) alignRope() int8 { return j.align(0x0C, 0x04) }
 
-func (j *Joe) align(high, low byte) {
+func (j *Joe) align(high, low byte) int8 {
 	c := high
 	if j.X&0x0F < 8 {
 		c = low
 	}
 	j.X = j.X&0xF0 + c
+	return int8(c)
 }
 
 // standing handles states 0 and 1 ($8929).
@@ -307,8 +317,9 @@ func (j *Joe) standing(in Input, b buffer, r *Rules) {
 		j.commit(Ladder, 0, 2, b, r)
 		return
 	case in.Down && ropeTop(b):
-		j.alignRope()
-		j.commit(Rope, 0, 0, b, r)
+		// Grabbing a rope from above drops him by the alignment offset,
+		// 12 or 4 pixels: the game reuses the register ($89C3).
+		j.commit(Rope, 0, j.alignRope(), b, r)
 		return
 	}
 
@@ -320,9 +331,7 @@ func (j *Joe) standing(in Input, b buffer, r *Rules) {
 		dx = 2
 	}
 	if j.jumpPressed(in) {
-		j.FallStart = j.RawY
-		j.JumpCounter = len(r.JumpArc)
-		j.commit(Jumping, dx, -1, b, r)
+		j.jump(dx, b, r)
 		return
 	}
 	if ok, _ := floor(b[4], r); !ok {
@@ -335,6 +344,13 @@ func (j *Joe) standing(in Input, b buffer, r *Rules) {
 	} else {
 		j.commit(Walking, dx, 0, b, r)
 	}
+}
+
+// jump starts a jump ($89DC).
+func (j *Joe) jump(dx int8, b buffer, r *Rules) {
+	j.FallStart = j.RawY
+	j.JumpCounter = len(r.JumpArc)
+	j.commit(Jumping, dx, -1, b, r)
 }
 
 // ropeTop reports the tile test at $89B1: the middle foot tile, or the
@@ -355,6 +371,9 @@ func (j *Joe) jumping(b buffer, r *Rules) {
 		dy = r.JumpArc[j.JumpCounter]
 	}
 	dx := j.DX
+	if j.grab(b[1], b, r) {
+		return
+	}
 	if dy < 0 {
 		j.commit(Jumping, dx, dy, b, r)
 		return
@@ -362,11 +381,30 @@ func (j *Joe) jumping(b buffer, r *Rules) {
 	j.falling(dx, dy, b, r)
 }
 
+// grab catches a rope or pole at tile t, if Joe is jumping sideways and
+// past the first 3 frames of the jump ($8B0E, $8B5B).
+func (j *Joe) grab(t byte, b buffer, r *Rules) bool {
+	canGrab := j.DX != 0 && j.JumpCounter < 15 // $8B44
+	switch {
+	case t == tileRope && canGrab:
+		j.alignRope()
+		j.commit(Rope, 0, 0, b, r)
+		return true
+	case t == tilePole && b[4] != tileBrick && canGrab:
+		j.alignRope()
+		j.commit(Pole, 0, 4, b, r)
+		return true
+	}
+	return false
+}
+
 // falling handles states 5 and 6 ($8A83), and the falling half of a jump.
 func (j *Joe) falling(dx, dy int8, b buffer, r *Rules) {
 	ok, fire := floor(b[4], r)
 	if !ok {
-		j.commit(j.State, dx, dy, b, r)
+		if !j.grab(b[4], b, r) {
+			j.commit(j.State, dx, dy, b, r)
+		}
 		return
 	}
 	if fire || b[4] == tileFire {
@@ -418,6 +456,56 @@ func (j *Joe) ladder(in Input, b buffer, r *Rules) {
 		j.commit(Ladder, 0, -1, b, r)
 	default:
 		j.commit(Ladder, 0, 0, b, r)
+	}
+}
+
+// rope handles state 4 ($8D02).
+func (j *Joe) rope(in Input, b buffer, r *Rules) {
+	if j.jumpPressed(in) {
+		switch {
+		case in.Left:
+			j.jump(-2, b, r)
+			return
+		case in.Right:
+			j.jump(2, b, r)
+			return
+		}
+	}
+	if b[1] == tileEmpty {
+		// Above the top of the rope ($8C9C).
+		switch {
+		case in.Up:
+			j.fall(b, r) // let go ($8CC5)
+		case in.Down:
+			if ok, _ := floor(b[4], r); ok {
+				j.commit(Rope, 0, 1, b, r)
+			} else {
+				j.fall(b, r)
+			}
+		default:
+			j.commit(Rope, 0, 0, b, r)
+		}
+		return
+	}
+	switch t := b[4]; {
+	case t == tileEmpty || t == tileRopeEnd1 || t == tileRopeEnd2:
+		// Off the bottom of the rope: drop, harmlessly ($8D65).
+		j.FallStart = safeFallStart
+		j.commit(Falling, 0, 0, b, r)
+		return
+	default:
+		if ok, _ := floor(t, r); ok {
+			j.fall(b, r) // feet on a floor: let go and land
+			return
+		}
+	}
+	switch {
+	case in.Down:
+		j.commit(Rope, 0, 1, b, r)
+	case in.Up && j.Parity&1 == 1:
+		j.commit(Rope, 0, -1, b, r) // half speed going up ($8CE2)
+	default:
+		j.commit(Rope, 0, 0, b, r)
 	}
 }
 

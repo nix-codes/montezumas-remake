@@ -48,6 +48,16 @@ var scenarios = []scenario{
 	{"ladder down and back up", 2, 116, 53, 120, func(f int) joe.Input { return joe.Input{Down: f < 30, Up: f >= 30} }},
 	{"exit left", 2, 20, 53, 40, hold(joe.Input{Left: true})},
 	{"exit right", 2, 220, 53, 40, hold(joe.Input{Right: true})},
+	{"grab a rope and slide off the bottom", 5, 200, 53, 100, hold(joe.Input{Down: true})},
+	{"rope down then up", 5, 200, 53, 80, func(f int) joe.Input { return joe.Input{Down: f < 30, Up: f >= 30} }},
+	{"climb a rope back to the top", 5, 200, 53, 100, func(f int) joe.Input { return joe.Input{Down: f < 20, Up: f >= 20} }},
+	{"jump left off a rope", 5, 200, 53, 70, func(f int) joe.Input { return joe.Input{Down: f < 30, Left: f >= 35, Fire: f == 36} }},
+	{"fire on a rope without a direction", 5, 200, 53, 60, func(f int) joe.Input { return joe.Input{Down: f < 30, Up: f >= 35, Fire: f == 36} }},
+	{"running jump onto a rope", 23, 56, 93, 60, func(f int) joe.Input { return joe.Input{Right: true, Fire: f == 6} }},
+	{"rope to the far platform", 23, 56, 93, 100, func(f int) joe.Input { return joe.Input{Right: true, Fire: f == 6 || f == 50} }},
+	// Ends before an enemy reaches Joe at the foot of the pole; touching
+	// enemies isn't translated yet.
+	{"jump onto a pole", 12, 12, 53, 34, func(f int) joe.Input { return joe.Input{Right: true, Fire: f == 2} }},
 	// Ends at the room change: on the first frame after a downward one the
 	// original reads tiles from the half-drawn new room, which depends on
 	// drawing time the emulator only approximates.
