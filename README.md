@@ -1,0 +1,94 @@
+# Montezuma's Revenge remake
+
+A Go remake of the 1984 ColecoVision Montezuma's Revenge, built from the
+compilable disassembly in
+[tony-cruise/colecovision-games-source](https://github.com/tony-cruise/colecovision-games-source/tree/main/games/Montezuma%27s%20Revenge)
+(GPL-3.0, copied into `original/`).
+
+## Requirements
+
+- Go 1.27+
+- Ebitengine's Linux libraries: `sudo apt install libgl1-mesa-dev xorg-dev libasound2-dev`
+- [sjasmplus](https://github.com/z00m128/sjasmplus) on `PATH` (or `make SJASMPLUS=/path/to/sjasmplus`)
+
+## Usage
+
+```bash
+make rom       # assemble original/ into build/montezuma.rom
+make extract   # write tiles.png, sprites.png and loader-calls.txt to assets/
+make rooms     # capture all rooms of levels 1-3 to assets/rooms/
+make run       # play the remake sandbox (arrow keys)
+make original  # play the original ROM on the built-in emulator
+make test
+```
+
+`make original` keys: arrows = joystick, Z/X = left/right fire, 0-9 = keypad
+(press 1, 2 or 3 on the title screen to pick a level).
+
+`go run ./cmd/game -screenshot out.png` saves an early frame and exits.
+
+The first 8 KB of the assembled ROM matches MAME's checksum for the original
+cartridge; the last 4 KB can't be checked that way.
+
+## Layout
+
+| Path | Contents |
+|---|---|
+| `original/` | The disassembly (tniASM syntax; the Makefile adapts it for sjasmplus) |
+| `internal/rom` | Loads the ROM; decodes the game's inline VRAM loader calls (`SUB_AE00`) |
+| `internal/vdp` | TMS9918A tables and palette; draws tiles and sprites |
+| `internal/gfx` | Replays the game's boot-time VRAM loads |
+| `cmd/extract` | Writes the boot graphics as PNGs |
+| `internal/coleco` | Minimal ColecoVision emulator: Z80, RAM, TMS9918A, Go stand-ins for the BIOS calls the game uses |
+| `cmd/original` | Runs the original ROM in a window, or headless with scripted input |
+| `internal/pyramid` | Room layout of the pyramid and the game's room arithmetic |
+| `cmd/rooms` | Loads every room through the original game and saves tile maps, sprites and exits |
+| `cmd/dis` | Disassembles ROM ranges the disassembly left as raw bytes |
+| `cmd/game` | Ebitengine game: for now a hand-built test room with placeholder movement |
+
+## Notes
+
+### Emulator
+
+- The BIOS ROM isn't included; `internal/coleco/bios.go` reimplements the 14
+  BIOS routines the game calls. `LOAD_ASCII` uses a stand-in font squeezed
+  from Go's 7x13 basic font.
+- The Z80 core (koron-go/z80) doesn't count cycles, so frames are paced at a
+  fixed number of instructions. Sound isn't emulated.
+- `Machine.Call` runs one of the game's subroutines to completion, which is
+  how `cmd/rooms` loads rooms.
+
+### Rooms
+
+- 100 rooms: room 0 is the entrance hall, and rooms 1-99 form a pyramid of
+  nine rows (3, 5, ... 19 rooms) centred on column 10. Each level starts in
+  the entrance hall; Joe slides down a pole into room 2, the middle of the
+  top row. See `internal/pyramid`.
+- The game keeps the row in `$71A7` and the column in `$71A8`; the room
+  number is the column plus a per-row offset (table at `$A4C5`). Left/right
+  changes the column, up/down the row. Columns aren't bounds-checked, so side
+  exits at the end of a row wrap into the next room by number (left from
+  room 4 leads to room 3). Leaving the bottom row downwards starts the next
+  level.
+- `$A067` loads the room at the current row and column; the layout comes from
+  the address table at `$9477`. `make rooms` calls it on the emulator for
+  every room and saves the tile map, sprites and exits (`rooms.json`), a PNG
+  per room and `map.png` of the whole pyramid.
+- Exits are worked out from edge tiles: two open tile rows at a side, or a
+  ladder or rope (`$88/$89`, `$10/$11`, `$90`) at the top or bottom. 13 side
+  openings and room 13's ladder up into room 7 have no matching opening on
+  the far side; the game still moves Joe there.
+- The levels share the layouts except rooms 6, 7, 9 and 72.
+- Floor tiles Joe can stand on are listed at `$93FF`; other tile classes
+  are at `$9412`, `$943C` and `$A00E` (not yet identified).
+
+### Graphics
+
+- `SUB_AE00` takes 4-byte records inline after its `CALL` (source address,
+  item index, item count) and passes each to BIOS `PUT_VRAM`; the preceding
+  `LD A,n` selects the table. `assets/loader-calls.txt` lists every call site.
+- Some tiles (the BIOS font loaded by `LOAD_ASCII`) come from the console BIOS
+  ROM, which is not included, so those slots are blank.
+- Sprite colours are set at run time, so sprites are drawn in white.
+- The extracted graphics are the original game's assets: fine for personal
+  use, not for redistribution.
