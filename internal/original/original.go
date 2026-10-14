@@ -174,12 +174,31 @@ func (g *Game) PlaceJoe(x, y int) {
 	g.Poke(spriteTable+5, byte(x))
 }
 
-// ResetJoe places Joe at (x, y), standing still.
+// ResetJoe places Joe at (x, y), standing still, and makes that where he
+// respawns.
 func (g *Game) ResetJoe(x, y int) {
 	g.PlaceJoe(x, y)
 	g.Poke(joeState, Standing)
 	g.Poke(joeDX, 0)
 	g.Poke(joeDY, 0)
+	g.saveEntry()
+}
+
+// Where the game keeps Joe as he entered the room, to respawn him there:
+// his velocity, state and two other bytes, and his two sprites.
+const (
+	entryState   = 0x707D // $7077, $7076, $7079, $7078, $7075
+	entrySprites = 0x704B // 8 bytes from the sprite table
+)
+
+// saveEntry remembers Joe as he is now, as the room-entry code does.
+func (g *Game) saveEntry() {
+	for i, a := range []uint16{joeDY, joeDX, joeState, 0x7078, 0x7075} {
+		g.Poke(entryState+uint16(i), g.Peek(a))
+	}
+	for i := range uint16(8) {
+		g.Poke(entrySprites+i, g.Peek(spriteTable+i))
+	}
 }
 
 // Step runs one frame with the given input.

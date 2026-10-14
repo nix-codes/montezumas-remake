@@ -17,7 +17,7 @@ compilable disassembly in
 make rom       # assemble original/ into build/montezuma.rom
 make extract   # write tiles.png, sprites.png and loader-calls.txt to assets/
 make rooms     # capture all rooms of levels 1-3 to assets/rooms/
-make run       # play the remake: arrows move, space/Z/X jump, PageUp/PageDown jump rooms
+make run       # play the remake: 1-3 pick the level, arrows move, space/Z/X jump, Esc resets
 make original  # play the original ROM on the built-in emulator
 make test
 ```
@@ -25,9 +25,12 @@ make test
 `make original` keys: arrows = joystick, Z/X = left/right fire, 0-9 = keypad
 (press 1, 2 or 3 on the title screen to pick a level).
 
-`go run ./cmd/game -room N` starts in room N; `-screenshot out.png` saves an
-early frame and exits. Jumping to a room (PageUp/PageDown or `-room`) stands
-Joe on a floor spot away from its enemies, and he respawns there.
+In the remake, Esc is the console's reset button, back to the title
+screen, and PageUp/PageDown jump rooms for testing. `go run ./cmd/game
+-level N` skips the title and starts level N, `-room N` starts in room N;
+`-screenshot out.png` saves an early frame and exits. Jumping to a room
+(PageUp/PageDown or `-room`) stands Joe on a floor spot away from its
+enemies, and he respawns there.
 
 The first 8 KB of the assembled ROM matches MAME's checksum for the original
 cartridge; the last 4 KB can't be checked that way.
@@ -39,7 +42,7 @@ cartridge; the last 4 KB can't be checked that way.
 | `original/` | The disassembly (tniASM syntax; the Makefile adapts it for sjasmplus) |
 | `internal/rom` | Loads the ROM; decodes the game's inline VRAM loader calls (`SUB_AE00`) |
 | `internal/vdp` | TMS9918A tables and palette; draws tiles and sprites |
-| `internal/gfx` | Replays the game's boot-time VRAM loads |
+| `internal/gfx` | Replays the game's boot-time VRAM loads; the animated tile tables; the title screen |
 | `cmd/extract` | Writes the boot graphics as PNGs |
 | `internal/coleco` | Minimal ColecoVision emulator: Z80, RAM, TMS9918A, Go stand-ins for the BIOS calls the game uses |
 | `cmd/original` | Runs the original ROM in a window, or headless with scripted input |
@@ -177,6 +180,31 @@ cartridge; the last 4 KB can't be checked that way.
   of the score's middle BCD byte). `$7049` counts Joe's own life too, and
   drops when he dies rather than when he respawns.
 - Not done: the amulet's border flash.
+
+### Title screen, dying and game over
+
+- The cartridge boots straight into the title screen (`$8116`): the BIOS
+  font, the capitals enlarged to 2x2 tiles from `$80` (BIOS `ENLARGE`) in
+  yellow, and text from the ROM. It waits for keypad 1, 2 or 3 (`$817C`;
+  fire held with it doesn't count), then starts that level (`$A59D`).
+  `internal/gfx` builds the screen from the ROM, with the stand-in font
+  `internal/vdp` shares with the emulator; a test compares it with the
+  original's.
+- Dying sets `$70A9` to `$70`; the movement task counts it down and acts
+  once it goes negative (`$8B8E`), the frame after it reaches 0. Joe then
+  respawns as he entered the room, and the room is drawn again: a pause of
+  4 frames on the emulator, 5 for a mirrored room, which then also waits
+  out its sync delay. The HUD is redrawn at the end of the pause.
+- With no lives left (`$7049` is 0), `$8B95` writes GAME OVER (`$9409`,
+  ASCII) over the room, hides Joe, turns the sound off and puts the lives
+  back to 6. The main loop then waits for fire with no direction held, so
+  only the frame interrupt runs. Then it sets `$705F` bit 0 and waits for
+  the level to be 1: on level 1 the game continues, the score back to 0,
+  Joe respawning. Nothing clears that bit, so a second game over waits for
+  fire forever, as does any game over past level 1: only the console's
+  reset gets back to the title.
+- Tests compare respawns (in a plain room and a mirrored one) and game
+  over on levels 1 and 2 against the original, every frame.
 
 ### Treasure room and next level
 

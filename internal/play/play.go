@@ -125,6 +125,13 @@ type Game struct {
 	// The sound chip, and the player the frame interrupt runs on it.
 	PSG   *sound.PSG
 	Sound sound.Player
+
+	// GameOver is set once Joe has died with no spare lives left: the
+	// game stands still with GAME OVER on screen, Joe hidden. On level 1,
+	// fire continues it, once per game ($705F bit 0, Continued); otherwise
+	// only the console's reset button gets out.
+	GameOver  bool
+	Continued bool
 }
 
 // Screen is the current room's tiles as items change them. Version goes up
@@ -301,6 +308,10 @@ func (g *Game) itemRoom() *items.Room {
 // and item tasks, then the enemies and Joe.
 func (g *Game) Step(in joe.Input) {
 	defer g.PSG.EndFrame()
+	if g.GameOver {
+		g.stepGameOver(in)
+		return
+	}
 	// The frame interrupt: set up a pending treasure screen, then move the
 	// random pointer. Drawing chains and jewels takes the whole frame: the
 	// pointer doesn't move, and the main loop's tasks, Joe included, don't
@@ -354,14 +365,75 @@ func (g *Game) Step(in joe.Input) {
 	}
 
 	if g.Joe.Respawn() {
-		g.Lives--
-		if g.Lives < 0 {
-			g.Restart(pyramid.Start)
+		if g.Lives == 0 {
+			g.gameOver()
 			return
 		}
-		g.Joe = g.Entry
-		g.load()
+		g.Lives--
+		g.respawn()
 	}
+}
+
+// respawnFreeze is how long the original stands still after a respawn
+// while it redraws the room, measured on the emulator like a room
+// change's pause: 4 frames, a frame more for a mirrored room, which also
+// leaves it waiting out its sync delay.
+const respawnFreeze = 4
+
+// respawn puts Joe back as he entered the room, and reloads it.
+func (g *Game) respawn() {
+	g.Joe = g.Entry
+	g.load()
+	g.syncWait = int(g.Rooms[g.Room].SyncDelay)
+	g.Joe.Frozen = respawnFreeze + g.syncWait
+	if g.syncWait > 0 {
+		g.Joe.Frozen++
+	}
+}
+
+// Game over ($8B95).
+const (
+	gameOverText = 0x9409 // "GAME OVER", a space as tile 0
+	gameOverLen  = 9
+	gameOverCol  = 12
+	gameOverRow  = 11
+)
+
+// gameOver ends the game as Joe would respawn: GAME OVER over the room,
+// Joe hidden and the sound off.
+func (g *Game) gameOver() {
+	g.GameOver = true
+	sound.TurnOff(g.PSG)
+	text, err := g.Rules.ROM.Slice(gameOverText, gameOverLen)
+	if err != nil {
+		panic(err)
+	}
+	for i, t := range text {
+		g.Tiles.SetTile(gameOverCol+i, gameOverRow, t)
+	}
+}
+
+// stepGameOver is a frame of game over. The main loop waits for fire
+// with no direction held ($8BBE), so only the frame interrupt runs. On
+// level 1, the first time, the game then continues: the score starts
+// again from 0, the lives are back, and Joe respawns. Anywhere else the
+// original waits for the level to be 1 ($8BD1), forever.
+func (g *Game) stepGameOver(in joe.Input) {
+	g.Random++
+	g.stepAnimation()
+	g.Sound.Tick(g.PSG)
+	g.Enemies.Counter++
+	if !in.Fire || in.Left || in.Right || in.Up || in.Down || g.Continued {
+		return
+	}
+	g.Continued = true
+	if g.Level != 1 {
+		return
+	}
+	g.GameOver = false
+	g.Score = 0
+	g.Lives = StartLives
+	g.respawn()
 }
 
 // tick counts a main-loop task down and reports whether it runs ($A5EE).

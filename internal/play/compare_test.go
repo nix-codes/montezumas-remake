@@ -197,12 +197,13 @@ func run(t *testing.T, sc scenario, setup func(*play.Game, *original.Game)) {
 				if err := o.Step(coleco.Joystick{Up: in.Up, Down: in.Down, Left: in.Left, Right: in.Right, FireLeft: in.Fire}); err != nil {
 					t.Fatal(err)
 				}
-				drawn := g.TreasureScreens
+				drawn, frozen := g.TreasureScreens, g.Joe.Frozen
 				g.Step(in)
 				// The original spreads drawing a treasure screen over two
-				// frames, and a new room over the pause after Joe leaves
-				// the old one; compare the screen once it's finished.
-				if msg := compare(g, o, g.TreasureScreens == drawn && g.Joe.Frozen == 0); msg != "" {
+				// frames, and a room over the pause after Joe leaves the
+				// old one or respawns; compare the screen once it's
+				// finished, the frame after the pause.
+				if msg := compare(g, o, g.TreasureScreens == drawn && frozen == 0 && g.Joe.Frozen == 0); msg != "" {
 					t.Fatalf("frame %d: %s", f, msg)
 				}
 			}

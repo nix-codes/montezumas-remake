@@ -80,7 +80,7 @@ type Joe struct {
 	LadderCounter byte // $70B2: steps of the climb-down-onto-a-ladder sequence
 	FireLatch     byte // $7075: fire button state, for detecting new presses
 	Parity        byte // $70AB: counts down 3..0 each frame; the conveyor moves Joe when bit 0 is clear
-	DeathTimer    int  // $70A9: frames left before he respawns
+	DeathTimer    int  // $70A9: counts down; he respawns once it's negative
 	Frozen        int  // frames left of the pause after changing room
 	AnimTick      int  // frames he has moved, for walking and climbing animation
 	StepCounter   byte // $70AA: 7 down to 0, a step every other frame he's moving
@@ -611,10 +611,11 @@ func (j *Joe) die(state int) {
 }
 
 // dead counts down the death animation ($8B8E). The caller respawns Joe
-// when Respawn reports true.
+// when Respawn reports true: the frame after the timer reaches 0, as the
+// original tests its sign.
 func (j *Joe) dead() {
 	j.DX, j.DY = 0, 0
-	if j.DeathTimer > 0 {
+	if j.DeathTimer >= 0 {
 		j.DeathTimer--
 	}
 }
@@ -638,5 +639,5 @@ func (j *Joe) step(moving bool) {
 
 // Respawn reports whether Joe's death animation has finished.
 func (j *Joe) Respawn() bool {
-	return j.State >= Zapped && j.DeathTimer == 0
+	return j.State >= Zapped && j.DeathTimer < 0
 }

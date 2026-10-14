@@ -1,6 +1,9 @@
 package coleco
 
-import "montezuma-remake/internal/sound"
+import (
+	"montezuma-remake/internal/sound"
+	"montezuma-remake/internal/vdp"
+)
 
 // Go stand-ins for the ColecoVision BIOS (OS7) routines the game calls,
 // keyed by their jump-table address.
@@ -201,26 +204,8 @@ func (m *Machine) enlarge() {
 	for i := 0; i < n; i++ {
 		var p [8]byte
 		copy(p[:], m.VDP.VRAM[base+(src+i)*8:])
-		var big [16]uint16
-		for row, b := range p {
-			var w uint16
-			for bit := 0; bit < 8; bit++ {
-				if b&(0x80>>bit) != 0 {
-					w |= 0xC000 >> (bit * 2)
-				}
-			}
-			big[row*2], big[row*2+1] = w, w
-		}
-		// Quadrants in sprite order: top-left, bottom-left, top-right, bottom-right.
-		for q := 0; q < 4; q++ {
-			for row := 0; row < 8; row++ {
-				w := big[(q%2)*8+row]
-				b := byte(w >> 8)
-				if q >= 2 {
-					b = byte(w)
-				}
-				m.VDP.VRAM[base+(dst+i*4+q)*8+row] = b
-			}
+		for q, b := range vdp.Enlarge(p) {
+			copy(m.VDP.VRAM[base+(dst+i*4+q)*8:], b[:])
 		}
 	}
 }
