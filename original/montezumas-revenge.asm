@@ -2,71 +2,84 @@
 ; MONTEZUMA'S REVENGE (1984) ColecoVision disassembly
 ; =============================================================================
 ;
+; Modified 2026-10-15 for montezuma-remake: the room loader ($A067-$A547),
+; room data and tile tables ($943C-$A066) relabelled, recommented and
+; turned back into code where left as bytes; legend and RAM notes corrected.
+; Assembles to the same bytes.
+;
 ; LEGEND
 ;
 ; --- ROM LAYOUT (12 KB: $8000-$AFFF) ---
 ;
-;   $8021  CART_ENTRY: JP NMI             line   217
-;   $8025  START -- boot entry            line   236
-;   ~$8DA2 LOC_8DA2 -- game state mach.  line   834
-;   ~$8EB0 DELAY_LOOP_8EB0 -- frame body line   915
-;   ~$AA00 NMI handler                   line  2587
-;   ~$AE00 SUB_AE00 -- VRAM data writer  line  3084
+;   $8021  CART_ENTRY: JP NMI             line   236
+;   $8025  START -- boot entry            line   255
+;   ~$8DA2 LOC_8DA2 -- game state mach.  line   853
+;   ~$8EB0 DELAY_LOOP_8EB0 -- frame body line   934
+;   ~$AA00 NMI handler                   line  4008
+;   ~$AE00 SUB_AE00 -- VRAM data writer  line  4505
 ;
 ; --- BOOT / INIT SEQUENCE ($8025) ---
 ;
-;   START ($8025)             line   236  zero $7000-$73FF, SP=$73C0
-;   SUB_8413 ($8413)          line   510  FILL_VRAM at $0000, length $4000
-;   DELAY_LOOP_827F ($827F)   line   426  copy 16 bitmap pairs to RAM
+;   START ($8025)             line   255  zero $7000-$73FF, SP=$73C0
+;   SUB_8413 ($8413)          line   529  FILL_VRAM at $0000, length $4000
+;   DELAY_LOOP_827F ($827F)   line   445  copy 16 bitmap pairs to RAM
 ;
 ; --- NMI HANDLER (~$AA00) ---
 ;
-;   CART_ENTRY ($8021)        line   217  JP NMI (all interrupts -> NMI)
-;   NMI (~$AA00)              line  2587  saves AF,BC,DE,HL,IX,IY + alts
+;   CART_ENTRY ($8021)        line   236  JP NMI (all interrupts -> NMI)
+;   NMI (~$AA00)              line  4008  saves AF,BC,DE,HL,IX,IY + alts
 ;                                         $70B1 bit 7: re-entry guard
-;                                         $70B1 bit 3: SUB_919A (score)
+;                                         $70B1 bit 3: SUB_919A (room change)
 ;                                         $70B1 bit 4: DELAY_LOOP_8EB0 (frame)
 ;                                         $705F bit 3: SUB_A60B (room render)
 ;
 ; --- FRAME GAME BODY ($8EB0) ---
 ;
-;   DELAY_LOOP_8EB0 ($8EB0)   line   915  per-frame body (from NMI bit 4)
-;   SUB_8308 ($8308)          line   461  render room tiles to VRAM
-;   SUB_A540 ($93C0)          line  2255  tile collision (ladders/ropes/platforms)
-;   SUB_908F ($908F)          line  1012  item pickup: CPIR $71B2 table
+;   DELAY_LOOP_8EB0 ($8EB0)   line   934  per-frame body (from NMI bit 4)
+;   SUB_8308 ($8308)          line   480  render room tiles to VRAM
+;   TABLE_BYTE ($A540)        line  3673  A = (HL + A); here the table at $93C0
+;   SUB_908F ($908F)          line  1031  item pickup: CPIR $71B2 table
 ;
 ; --- GAME STATE / ROOM TRANSITIONS ---
 ;
-;   LOC_8DA2 ($8DA2)          line   834  game state dispatch ($7079)
-;   SUB_8DC2 ($8DC2)          line   849  DEC $7049 (life counter)
-;   LOC_8DD3 ($8DD3)          line   858  update $7300/$7304 player tile X/Y
-;   LOC_929B ($929B)          line  1183  inner-loop end: JP LOC_8DA2
+;   LOC_8DA2 ($8DA2)          line   853  game state dispatch ($7079)
+;   SUB_8DC2 ($8DC2)          line   868  DEC $7049 (life counter)
+;   LOC_8DD3 ($8DD3)          line   877  update $7300/$7304 player tile X/Y
+;   LOC_929B ($929B)          line  1204  inner-loop end: JP LOC_8DA2
 ;
 ; --- ROOM RENDERER / ENEMY PLACEMENT ---
 ;
-;   SUB_A60B ($A60B)          line  2311  room setup (from NMI bit 3 of $705F)
-;   SUB_919A ($919A)          line  1061  SET bit 0 $7000; clear $707A/$7308
+;   SUB_A60B ($A60B)          line  3732  room setup (from NMI bit 3 of $705F)
+;   SUB_919A ($919A)          line  1082  room change: clear enemy sprites, LOAD_ROOM
+;
+; --- ROOM LOADER ($A067) ---
+;
+;   LOAD_ROOM ($A067)         line  2865  draw a room by running its command list
+;   ROOM_LISTS ($9477)        line  1383  each room's command list (ROOM DATA notes)
+;   CMD_GROUPS ($9444)        line  1329  tile group of each command
+;   TILE_GROUPS ($9FD1)       line  2770  tiles the commands draw; HUD icons
+;   PLACE_ENEMY ($A405)       line  3464  enemy object + sprite from a command
+;   NEXT_THING_GONE ($A514)   line  3637  test the room's "gone" bitmap ($70C0)
+;   SUB_92BE ($92BE)          line  1231  mark a thing gone (picked up, killed)
+;   DRAW_INVENTORY ($A548)    line  3685  HUD inventory: background + icons
 ;
 ; --- VRAM DATA WRITER ---
 ;
-;   SUB_AE00 ($AE00)          line  3084  POP HL: return addr = data ptr
-;   SUB_AE2E ($AE2E)          line  3125  set VRAM write addr + PUT_VRAM
-;   SUB_AE25 ($AE25)          line  3119  set VRAM write addr + FILL_VRAM
-;   SUB_AEA7 ($AEA7)          line  3167  tile write loop (B iterations)
-;   SUB_A8B7 ($A8B7)          line  2462  VRAM-lock enter: SET $705F bit 1
-;   SUB_A8C3 ($A8C3)          line  2471  VRAM-lock exit: DEC $70AF
+;   SUB_AE00 ($AE00)          line  4505  POP HL: return addr = data ptr
+;   SUB_AE2E ($AE2E)          line  4546  set VRAM write addr + PUT_VRAM
+;   SUB_AE25 ($AE25)          line  4540  set VRAM write addr + FILL_VRAM
+;   SUB_AEA7 ($AEA7)          line  4588  write C tiles from HL at DE, B times
+;   SUB_A8B7 ($A8B7)          line  3883  VRAM-lock enter: SET $705F bit 1
+;   SUB_A8C3 ($A8C3)          line  3892  VRAM-lock exit: DEC $70AF
 ;
 ; --- SOUND SYSTEM ---
 ;
-;   SOUND_WRITE_A067 ($A067)  line  1661  load channel data ($7086/$72C0)
-;   SOUND_WRITE_A405 ($A405)  line  2065  enemy placement: write XY to $7304
-;   SUB_AC6D ($AC6D)          line  2955  sound sequencer: OUT $FF SN76489A
-;   SUB_A92F ($A92F)          line  2499  SN76489A byte writer (4-frame cycle)
-;   SUB_AC1A ($AC1A)          line  2896  sound trigger with priority ($702C)
-;   SOUND_WRITE_A548 ($A548)  line  2264  item sprite loader: walk $71B2
-;   SUB_AF70 ($AF70)          line  3310  BCD score add (IY=$7017 digits)
-;   SUB_AEFE ($AEFE)          line  3235  score row renderer
-;   SUB_AF54 ($AF54)          line  3286  display lives count
+;   SUB_AC6D ($AC6D)          line  4376  sound sequencer: OUT $FF SN76489A
+;   SUB_A92F ($A92F)          line  3920  SN76489A byte writer (4-frame cycle)
+;   SUB_AC1A ($AC1A)          line  4317  sound trigger with priority ($702C)
+;   SUB_AF70 ($AF70)          line  4731  BCD score add (IY=$7017 digits)
+;   SUB_AEFE ($AEFE)          line  4656  score row renderer
+;   SUB_AF54 ($AF54)          line  4707  display lives count
 ;
 ; --- KEY RAM ---
 ;
@@ -77,12 +90,18 @@
 ;   $7049  life counter
 ;   $702C  sound channel flags (bit 7=active  bit 5=seq  bit 6=repeat)
 ;   $705F  game flags (bit 1=VRAM-busy  bit 3=room-setup  bit 5=tile-skip)
-;   $7079  game state ($08=normal play)
+;   $7079  Joe's state (state machine at $8901)
 ;   $70AF  VRAM-lock nesting counter
 ;   $70B1  NMI flags (bit 7=re-entry  bit 3=score  bit 4=game-body)
-;   $7097  frame counter     $71A2  animation frame
-;   $71B2  item table (6 bytes CPIR)    $7207  sprite flicker counter
-;   $7300  player tile X     $7304  secondary X     $7308  enemy data
+;   $7097  frame counter
+;   $71B2  inventory (6 bytes CPIR)     $7207  main loop frame-sync byte
+;   $7300  sprite table: Joe's 2 sprites, then the enemies' from $7308
+;   $7015  room number       $71A6  level, from 1
+;   $71A7  pyramid row       $71A8  pyramid column
+;   $7086  enemy objects (2 bytes each, $FF free)
+;   $70C0  "gone" bitmap: 2 bytes per room, a bit per thing (NEXT_THING_GONE)
+;   $72C0  contact list: a thing's position, or an enemy's sprite offset
+;   $7190-$71B1  room loader state (see LOAD_ROOM)
 ;
 ;
 ;
@@ -906,7 +925,7 @@ LOC_8DD3:
 ; game subsystems:
 ;   CALL SUB_8308        render current room tiles to VRAM (calls SUB_AE00 $04)
 ;   load $71A7 (player speed) -> compute animation frame count (B=6..8 x speed)
-;   CALL SUB_A540 ($93C0) tile collision update: ladders, ropes, platforms
+;   CALL TABLE_BYTE  read the table at $93C0
 ;   LD DE,$0001 / LD IY,$0007 / CALL SUB_AE2E  write sprite attribute block
 ;   $71A6 (room difficulty) -> B: cap player max speed
 ;   $71A7 (current speed) vs B: CALL SUB_908F ($53) -- item pickup check
@@ -927,7 +946,7 @@ LOC_8EBF:
     ADD     A, C                            ; ADD A, C: accumulate speed -> animation frame count
     DJNZ    LOC_8EBF                        ; DJNZ LOC_8EBF: sum speed * 6 times
     LD      HL, $93C0                       ; HL = $93C0 (tile collision lookup table)
-    CALL    SUB_A540                        ; CALL SUB_A540: tile collision update (ladders/ropes/platforms)
+    CALL    TABLE_BYTE                      ; A = byte A of the table at $93C0
     LD      DE, $0001                       ; DE = $0001 (sprite attribute write flag)
     LD      IY, $0007                       ; IY = $0007 (sprite stride / attribute selector)
     LD      A, $04                          ; A = $04 (VRAM block selector)
@@ -1024,7 +1043,7 @@ SUB_909C:
     POP     DE                              ; POP DE (DE = HL -- source address)
     DEC     DE                              ; DEC DE (DE = HL-1 -- dest one slot before source)
     LDIR                                    ; LDIR: shift item table left by one slot (remove collected item)
-    CALL    SOUND_WRITE_A548                ; CALL SOUND_WRITE_A548: update item sprite after pickup
+    CALL    DRAW_INVENTORY                  ; redraw the inventory
     RET                                     ; RET: return from SUB_909C
     DB      $79, $C6, $04, $D6, $04, $FE, $04, $30 ; inline Z80: LD A,C / ADD A,$04 / SUB $04 ...
     DB      $FA, $5F, $AF, $47, $CB, $43, $28, $02 ; inline Z80: CP $04 / JR NC / LD E,A ...
@@ -1058,16 +1077,18 @@ SUB_909C:
     DB      $03, $02, $CD, $A7, $AE, $21, $00, $70 ; inline Z80: tail end bytes
     DB      $CB, $A6, $CB, $96, $C9         ; inline Z80: end of SUB_909C inline data
 
+; Change room: no enemies, their sprites cleared, then load the room at
+; the current row and column.
 SUB_919A:
-    LD      HL, WORK_BUFFER                 ; HL = WORK_BUFFER ($7000)
-    SET     0, (HL)                         ; SET 0, (HL): set bit 0 = game active
-    XOR     A                               ; A = $00
-    LD      ($707A), A                      ; ($707A) = $00: clear scroll offset
-    LD      HL, $7308                       ; HL = $7308 (enemy entity data block)
-    LD      BC, $0020                       ; BC = $0020 (32 bytes)
-    CALL    SUB_840B                        ; CALL SUB_840B: zero-fill $7308 enemy data ($20 bytes)
-    CALL    SOUND_WRITE_A067                ; CALL SOUND_WRITE_A067: load new sound channel data
-    RET                                     ; RET: return after sound/entity init
+    LD      HL, WORK_BUFFER
+    SET     0, (HL)
+    XOR     A
+    LD      ($707A), A                      ; no enemies
+    LD      HL, $7308                       ; clear the enemies' 8 sprites
+    LD      BC, $0020
+    CALL    SUB_840B
+    CALL    LOAD_ROOM
+    RET
 
 SUB_91B0:
     LD      A, ($7096)                      ; A = ($7096) direction/state counter
@@ -1199,22 +1220,25 @@ LOC_92AF:
     SUB     L                               ; SUB L: A = $C0 - L (distance from centre)
     NEG                                     ; NEG: make positive
     SRA     A                               ; SRA A: halve the distance
-    CALL    SUB_92BE                        ; CALL SUB_92BE: compute reaction velocity and apply
+    CALL    SUB_92BE                        ; mark the contact's thing gone
     LD      C, $00                          ; LD C,$00: C = 0 (clear speed component)
     LD      E, C                            ; LD E,C: E = 0 (clear second speed component)
     RET                                     ; RET: return with C=E=0 (no reaction)
 
+; Toggle thing A-1's bit in the room's "gone" bitmap ($70C0): the item
+; picked up, door opened or enemy killed stays gone when the room is
+; reloaded (see NEXT_THING_GONE).
 SUB_92BE:
-    DEC     A                               ; DEC A
-    LD      ($71A2), A                      ; ($71A2) = A: store animation frame index
-    CALL    SUB_A4B5                        ; CALL SUB_A4B5: speed table lookup -> A
-    SLA     A                               ; SLA A: double speed value
-    LD      ($71A1), A                      ; ($71A1) = A: store player velocity
-    CALL    SUB_A514                        ; CALL SUB_A514: collision flag test
-    LD      A, (HL)                         ; A = (HL)
-    XOR     D                               ; XOR D: toggle direction bit
-    LD      (HL), A                         ; (HL) = A: write updated direction
-    RET                                     ; RET: return after direction toggle
+    DEC     A
+    LD      ($71A2), A                      ; thing A-1
+    CALL    ROOM_NUMBER
+    SLA     A
+    LD      ($71A1), A                      ; the room's bitmap bytes
+    CALL    NEXT_THING_GONE                 ; HL = its byte, D = its bit
+    LD      A, (HL)
+    XOR     D
+    LD      (HL), A
+    RET
 
 SUB_92D1:
     LD      HL, $7098                       ; HL = $7098 (movement flip-flag)
@@ -1267,1007 +1291,2404 @@ SUB_92D1:
     DB      $AF, $A9, $AE, $A8, $A3, $A2, $A1, $A0 ; HUD tile ID table: continued
     DB      $A6, $A7, $A4, $A5, $6B, $6A, $69, $68 ; HUD tile ID table: end sentinel bytes
     DB      $7B, $7A, $79, $78, $73, $72, $71, $70 ; "{zyxsrqp"
-    DB      $08, $B0, $BB, $C0, $B7, $9C, $C7, $0B ; tile type flags: room object type tag bytes (start)
-    DB      $00, $00, $02, $02, $02, $00, $00, $02 ; tile type flags: continued
-    DB      $06, $10, $13, $15, $0B, $1B, $17, $FF ; tile type flags: continued + sentinel $FF (x2)
-    DB      $FF, $FF, $FF, $FF, $02, $00, $00, $02 ; tile type flags: continued
-    DB      $06, $10, $FF, $FF, $1F, $21, $24, $42 ; tile type flags: end sentinel + tile addr lo/hi pairs
-    DB      $44, $49, $4E, $53, $58, $5D, $62, $7C ; "DINSX]b|"
-    DB      $81, $67, $6E, $75, $FF, $FF, $FF, $FF ; subroutine address table: lo/hi ptr pairs (start)
-    DB      $86, $8A, $88, $41, $95, $6A, $95, $7B ; subroutine address table: continued
-    DB      $95, $DA, $95, $EA, $95, $F8, $95, $94 ; subroutine address table: continued
-    DB      $96, $AC, $96, $FF, $96, $09, $97, $3B ; subroutine address table: continued
-    DB      $97, $4B, $97, $57, $97, $C1, $97, $DD ; subroutine address table: continued
-    DB      $97, $16, $98, $22, $98, $AC, $98, $BF ; subroutine address table: continued
-    DB      $98, $C3, $98, $17, $99, $26, $99, $B4 ; subroutine address table: continued
-    DB      $99, $27, $9A, $6C, $9A, $75, $9A, $87 ; subroutine address table: continued
-    DB      $9A, $95, $9A, $1B, $9B, $23, $9B, $33 ; subroutine address table: continued
-    DB      $9B, $49, $9B, $5E, $9B, $6E, $9B, $77 ; subroutine address table: continued
-    DB      $9B, $BD, $9B, $BF, $9B, $C7, $9B, $F0 ; subroutine address table: continued
-    DB      $9B, $FB, $9B, $08, $9C, $0E, $9C, $14 ; subroutine address table: continued
-    DB      $9C, $23, $9C, $31, $9C, $3A, $9C, $7C ; subroutine address table: continued
-    DB      $9C, $92, $9C, $A7, $9C, $B2, $9C, $BF ; subroutine address table: continued
-    DB      $9C, $D4, $9C, $DF, $9C, $E8, $9C, $F5 ; subroutine address table: continued
-    DB      $9C, $F9, $9C, $02, $9D, $11, $9D, $15 ; subroutine address table: continued
-    DB      $9D, $19, $9D, $25, $9D, $3F, $9D, $51 ; subroutine address table: continued
-    DB      $9D, $5B, $9D, $66, $9D, $78, $9D, $88 ; subroutine address table: continued
-    DB      $9D, $96, $9D, $B1, $9D, $BC, $9D, $C9 ; subroutine address table: continued
-    DB      $9D, $D3, $9D, $DF, $9D, $09, $9E, $1F ; subroutine address table: continued
-    DB      $9E, $25, $9E, $2E, $9E, $3D, $9E, $4F ; subroutine address table: continued
-    DB      $9E, $55, $9E, $5C, $9E, $5E, $9E, $72 ; subroutine address table: end + inline Z80 start
-    DB      $9E, $78, $9E, $8C, $9E, $92, $9E, $9B ; inline Z80: LD A,$0F / LD ($7096) / LD BC,$0349 ...
-    DB      $9E, $A2, $9E, $CB, $9E, $D4, $9E, $E4 ; inline Z80: LD BC,$0354 / LD B,A / LD HL,$864C ...
-    DB      $9E, $3C, $9F, $7F, $9F, $86, $9F, $91 ; inline Z80: LD BC,$0300 / LD A,$01 / LD BC,$0018 ...
-    DB      $9F, $96, $9F, $9C, $9F, $A0, $9F, $B0 ; inline Z80: LD B,$03 / LD A,$1F / LD B,$01 ...
-    DB      $9F, $C0, $9F, $D1, $9F, $01, $00, $20 ; inline Z80: LD BC,$0118 / LD BC,$0300 / LD A,$01 ...
-    DB      $0F, $96, $49, $03, $95, $54, $03, $82 ; inline Z80: LD B,$80 / LD HL,$356F / LD BC,$9950 ...
-    DB      $4C, $86, $03, $00, $01, $18, $83, $E0 ; inline Z80: LD B,$06 / LD BC,$0220 / LD A,$0F ...
-    DB      $20, $01, $0A, $02, $17, $0A, $1D, $17 ; inline Z80: LD HL,$27B9 / PUSH AF / LD B,$90 ...
-    DB      $03, $1F, $01, $18, $03, $00, $01, $18 ; inline Z80: LD C,$04 / LD B,$2C / LD B,$04 ...
-    DB      $80, $6F, $35, $99, $50, $06, $02, $A0 ; inline Z80: LD C,$09 / LD D,$10 ...
-    DB      $D4, $43, $20, $20, $0F, $58, $2F, $0F ; inline Z80: PUSH BC / LD A,$2B / LD BC,$A32B ...
-    DB      $21, $B9, $27, $F5, $90, $31, $70, $04 ; inline Z80: LD B,$42 / LD BC,$20C1 ...
-    DB      $2C, $04, $07, $31, $04, $09, $10, $05 ; inline Z80: LD B,$40 / LD HL,$40B8 ...
-    DB      $2B, $A3, $2B, $BC, $42, $20, $C1, $42 ; inline Z80: LD B,$64 / LD C,$85 ...
-    DB      $40, $B8, $40, $61, $64, $85, $00, $03 ; inline Z80: LD BC,$830B / LD B,$8B / LD A,$0E ...
-    DB      $58, $E3, $08, $44, $A7, $05, $82, $40 ; inline Z80: LD B,$42 / LD DE,$3B42 ...
-    DB      $36, $82, $E3, $71, $86, $88, $03, $82 ; inline Z80: LD B,$91 / LD C,$42 / LD C,$56 ...
-    DB      $AB, $11, $82, $98, $84, $87, $96, $04 ; inline Z80: LD A,$CE / LD B,$09 ...
-    DB      $83, $8B, $0E, $01, $42, $3D, $3B, $42 ; inline Z80: LD B,$3A / LD B,$0B ...
-    DB      $34, $91, $42, $56, $21, $42, $77, $16 ; inline Z80: LD B,$67 / LD C,$90 ...
-    DB      $42, $2E, $41, $9E, $CE, $09, $9E, $ED ; inline Z80: LD B,$31 / LD D,$20 / LD B,$D0 ...
-    DB      $0B, $9F, $EE, $09, $58, $2F, $08, $58 ; inline Z80: LD B,$60 / LD C,$56 ...
-    DB      $3A, $0B, $8E, $2C, $08, $66, $65, $31 ; inline Z80: LD C,$60 / LD B,$4B ...
-    DB      $67, $90, $31, $20, $31, $D0, $3F, $0E ; inline Z80: LD A,$0F / LD D,$30 / LD HL,$0880 ...
-    DB      $60, $56, $60, $4B, $60, $4E, $28, $EA ; inline Z80: LD A,$0F / LD B,$0B ...
-    DB      $02, $0F, $25, $00, $AF, $24, $43, $20 ; inline Z80: LD B,$49 / LD D,$0D ...
-    DB      $20, $0F, $02, $AA, $14, $20, $B7, $58 ; inline Z80: LD A,$0F / LD C,$28 / LD B,$2F ...
-    DB      $2F, $0F, $30, $80, $08, $0F, $09, $8D ; inline Z80: LD B,$37 / LD C,$42 ...
-    DB      $4B, $0D, $42, $20, $BA, $40, $A1, $31 ; inline Z80: LD HL,$AE91 / LD B,$42 ...
-    DB      $40, $45, $29, $40, $48, $27, $82, $60 ; inline Z80: LD B,$5C / LD B,$03 ...
-    DB      $24, $42, $8B, $37, $42, $AE, $91, $42 ; inline Z80: LD B,$5C / LD HL,$03C1 ...
-    DB      $8E, $81, $82, $4E, $21, $42, $2E, $31 ; inline Z80: LD B,$5C / LD DE,$029C ...
-    DB      $42, $39, $71, $42, $5F, $1D, $83, $E0 ; inline Z80: LD B,$5C / LD DE,$025E ...
-    DB      $20, $01, $5C, $41, $03, $5C, $61, $03 ; inline Z80: LD B,$5E / LD DE,$045C ...
-    DB      $5C, $81, $03, $5C, $C1, $03, $5C, $E1 ; inline Z80: LD B,$5E / LD BC,$026B ...
-    DB      $03, $9C, $01, $03, $9C, $21, $03, $9C ; inline Z80: LD B,$5E / LD A,$96 / LD B,$5F ...
-    DB      $62, $02, $9C, $82, $02, $9C, $A2, $02 ; inline Z80: LD B,$5F / LD D,$73 ...
-    DB      $9C, $C2, $02, $5C, $25, $02, $5C, $28 ; inline Z80: LD B,$5F / LD HL,$02E8 ...
-    DB      $02, $5E, $4C, $04, $5E, $53, $02, $5E ; inline Z80: LD B,$9F / LD HL,$025E / LD C,$A0 ...
-    DB      $6B, $0B, $5E, $96, $01, $5F, $6C, $04 ; inline Z80: LD B,$A0 / LD HL,$A06E / LD C,$62 ...
-    DB      $5F, $73, $02, $5F, $90, $03, $5F, $95 ; inline Z80: LD B,$A5 / LD C,$62 / LD B,$CE ...
-    DB      $01, $5F, $E8, $02, $9F, $08, $02, $5E ; inline Z80: LD C,$59 / LD B,$3A ...
-    DB      $C8, $02, $9E, $C5, $02, $42, $DC, $31 ; inline Z80: LD B,$A7 / LD A,$BD ...
-    DB      $A0, $6A, $A0, $6E, $62, $A5, $62, $CE ; inline Z80: LD B,$02 / LD HL,$BD14 ...
-    DB      $64, $D0, $65, $D2, $69, $D5, $8B, $6C ; inline Z80: LD A,$0F / LD A,$27 / LD C,$E6 ...
-    DB      $59, $3A, $0B, $A7, $BD, $31, $95, $31 ; inline Z80: LD B,$BB / LD BC,$14BD ...
-    DB      $F2, $31, $39, $90, $28, $FC, $0B, $A4 ; inline Z80: LD A,$0F / LD B,$0B ...
-    DB      $02, $BD, $14, $43, $20, $20, $0F, $58 ; inline Z80: LD B,$07 / LD C,$56 ...
-    DB      $2F, $0F, $27, $E6, $27, $F7, $10, $25 ; inline Z80: LD B,$57 / LD C,$29 ...
-    DB      $BB, $00, $BD, $14, $11, $02, $BD, $14 ; inline Z80: LD BC,$02BE ...
-    DB      $08, $0F, $0B, $42, $20, $4F, $55, $24 ; inline Z80: LD B,$CB / LD A,$0A ...
-    DB      $07, $56, $35, $07, $42, $3C, $4F, $57 ; inline Z80: LD B,$AE / LD A,$43 ...
-    DB      $29, $04, $42, $CD, $63, $54, $33, $04 ; inline Z80: LD B,$5E / LD C,$80 ...
-    DB      $02, $BE, $14, $83, $E0, $1E, $01, $9E ; inline Z80: LD B,$A6 / LD D,$2F ...
-    DB      $CB, $0A, $9F, $EB, $0A, $82, $AE, $43 ; inline Z80: LD B,$A6 / LD D,$59 ...
-    DB      $5E, $AD, $06, $5F, $CD, $06, $42, $6F ; inline Z80: LD A,$2F / LD A,$BE ...
-    DB      $25, $80, $59, $44, $58, $3C, $0D, $A5 ; inline Z80: LD B,$BB / LD C,$3E ...
-    DB      $59, $A6, $2F, $10, $80, $59, $22, $98 ; inline Z80: LD B,$10 / LD BC,$02BD ...
-    DB      $AF, $03, $A6, $59, $20, $A4, $00, $BE ; inline Z80: LD B,$14 / LD A,$43 ...
-    DB      $14, $02, $A2, $14, $50, $00, $A2, $14 ; inline Z80: LD A,$27 / LD A,$19 ...
-    DB      $90, $0B, $BB, $3E, $06, $30, $20, $30 ; inline Z80: LD B,$09 / LD C,$47 ...
-    DB      $D0, $10, $02, $BD, $14, $43, $27, $19 ; inline Z80: LD D,$59 / LD B,$3A ...
-    DB      $09, $47, $47, $08, $82, $32, $E6, $83 ; inline Z80: LD B,$CF / LD BC,$0210 ...
-    DB      $C0, $20, $02, $03, $80, $01, $12, $59 ; inline Z80: LD B,$22 / LD C,$50 ...
-    DB      $23, $0C, $26, $AC, $2A, $A9, $2A, $B1 ; inline Z80: LD A,$0F / LD C,$09 ...
-    DB      $29, $B8, $29, $BB, $82, $CE, $41, $98 ; inline Z80: LD C,$22 / LD HL,$71B1 ...
-    DB      $CF, $02, $10, $00, $AC, $22, $26, $A6 ; inline Z80: LD B,$43 / LD A,$0F ...
-    DB      $82, $CF, $22, $50, $98, $CF, $02, $08 ; inline Z80: LD A,$28 / LD C,$F5 ...
-    DB      $0F, $09, $43, $20, $20, $0F, $0B, $B7 ; inline Z80: LD C,$20 / LD C,$B9 ...
-    DB      $22, $B1, $71, $30, $90, $0B, $A7, $43 ; inline Z80: LD A,$07 / LD C,$8E ...
-    DB      $20, $20, $0F, $28, $F5, $20, $B9, $20 ; inline Z80: LD B,$08 / LD A,$0F ...
-    DB      $A6, $32, $30, $8D, $E6, $14, $4E, $95 ; inline Z80: LD A,$61 / LD B,$82 ...
-    DB      $04, $8D, $33, $04, $4D, $DA, $06, $4E ; inline Z80: LD A,$F9 / LD B,$07 ...
-    DB      $F1, $07, $8E, $75, $04, $00, $4C, $84 ; inline Z80: LD D,$16 / LD C,$42 ...
-    DB      $08, $0F, $06, $44, $20, $05, $42, $A0 ; inline Z80: LD B,$4D / LD C,$31 ...
-    DB      $1B, $82, $E1, $61, $82, $F9, $61, $07 ; inline Z80: continued
-    DB      $FC, $04, $03, $CD, $13, $01, $02, $ED ; inline Z80: continued large game Z80 block
-    DB      $16, $42, $6E, $51, $42, $90, $17, $82 ; inline Z80: continued
-    DB      $4D, $31, $42, $FB, $41, $02, $A9, $1C ; inline Z80: continued
-    DB      $82, $06, $32, $82, $25, $41, $02, $B4 ; inline Z80: continued
-    DB      $C2, $4A, $62, $0C, $0A, $A7, $0B, $58 ; inline Z80: continued
-    DB      $6E, $07, $98, $7C, $04, $59, $0B, $09 ; inline Z80: continued
-    DB      $0B, $F2, $8B, $1B, $82, $7B, $41, $42 ; inline Z80: continued
-    DB      $5F, $1E, $24, $4D, $64, $15, $71, $34 ; inline Z80: continued
-    DB      $71, $29, $90, $31, $93, $08, $0F, $09 ; inline Z80: continued
-    DB      $02, $A0, $55, $02, $BB, $55, $04, $A5 ; inline Z80: continued
-    DB      $03, $07, $B8, $03, $43, $20, $20, $0F ; inline Z80: continued
-    DB      $58, $2F, $0F, $20, $A9, $20, $B6, $71 ; inline Z80: continued
-    DB      $60, $02, $A0, $71, $02, $C0, $41, $02 ; inline Z80: continued
-    DB      $E0, $2A, $45, $82, $02, $43, $C0, $19 ; inline Z80: continued
-    DB      $01, $44, $E2, $02, $82, $01, $11, $82 ; inline Z80: continued
-    DB      $20, $13, $83, $80, $20, $04, $43, $2A ; inline Z80: continued
-    DB      $16, $01, $47, $5B, $02, $42, $5D, $39 ; inline Z80: continued
-    DB      $82, $7C, $41, $58, $2C, $05, $58, $D6 ; inline Z80: continued
-    DB      $06, $98, $8F, $04, $08, $0F, $09, $90 ; inline Z80: continued
-    DB      $30, $42, $3E, $0B, $02, $BE, $14, $58 ; inline Z80: continued
-    DB      $2F, $0F, $30, $20, $30, $30, $04, $A0 ; inline Z80: continued
-    DB      $05, $42, $20, $1D, $42, $C1, $21, $83 ; inline Z80: continued
-    DB      $C0, $20, $02, $82, $77, $13, $82, $9A ; inline Z80: continued
-    DB      $12, $82, $9D, $32, $42, $3F, $1B, $44 ; inline Z80: continued
-    DB      $4A, $02, $46, $68, $02, $42, $8C, $36 ; inline Z80: continued
-    DB      $42, $C1, $21, $45, $C3, $02, $87, $04 ; inline Z80: continued
-    DB      $02, $82, $26, $81, $42, $4E, $14, $42 ; inline Z80: continued
-    DB      $4A, $22, $42, $CF, $81, $47, $3C, $03 ; inline Z80: continued
-    DB      $4E, $35, $08, $42, $2B, $B1, $58, $32 ; inline Z80: continued
-    DB      $05, $58, $C1, $06, $5E, $8C, $02, $5E ; inline Z80: continued
-    DB      $AB, $01, $5E, $C4, $07, $5F, $AC, $02 ; inline Z80: continued
-    DB      $5F, $CB, $03, $5F, $E5, $08, $9F, $06 ; inline Z80: continued
-    DB      $06, $98, $CF, $02, $8D, $91, $03, $9F ; inline Z80: continued
-    DB      $D5, $02, $9F, $D8, $02, $9F, $BB, $02 ; inline Z80: continued
-    DB      $9E, $B5, $02, $9E, $B8, $02, $9E, $9B ; inline Z80: continued
-    DB      $02, $9C, $98, $02, $59, $FB, $03, $59 ; inline Z80: continued
-    DB      $B9, $03, $31, $80, $31, $82, $31, $28 ; inline Z80: continued
-    DB      $60, $59, $60, $9B, $90, $02, $AE, $14 ; inline Z80: continued
-    DB      $3E, $07, $A0, $2F, $A0, $59, $00, $BE ; inline Z80: continued
-    DB      $14, $00, $A2, $14, $10, $82, $AF, $23 ; inline Z80: continued
-    DB      $90, $0B, $BB, $3E, $0B, $71, $80, $5F ; inline Z80: continued
-    DB      $A0, $60, $9F, $00, $C0, $42, $20, $61 ; inline Z80: continued
-    DB      $42, $40, $36, $82, $00, $52, $82, $40 ; inline Z80: continued
-    DB      $81, $82, $60, $B1, $82, $80, $D1, $82 ; inline Z80: continued
-    DB      $A0, $F1, $82, $B1, $F1, $82, $93, $D1 ; inline Z80: continued
-    DB      $82, $75, $B1, $82, $58, $81, $82, $1B ; inline Z80: continued
-    DB      $52, $42, $5D, $36, $42, $3A, $61, $83 ; inline Z80: continued
-    DB      $C0, $20, $02, $42, $CF, $51, $42, $F1 ; inline Z80: continued
-    DB      $11, $82, $0C, $31, $82, $13, $21, $82 ; inline Z80: continued
-    DB      $4D, $31, $82, $51, $21, $82, $8F, $11 ; inline Z80: continued
-    DB      $5E, $83, $1A, $5C, $26, $14, $27, $E4 ; inline Z80: continued
-    DB      $90, $28, $FA, $3E, $0F, $31, $A0, $24 ; inline Z80: continued
-    DB      $A5, $21, $A7, $0B, $AB, $20, $B0, $58 ; inline Z80: continued
-    DB      $2F, $0F, $08, $0F, $09, $03, $A0, $01 ; inline Z80: continued
-    DB      $13, $42, $21, $21, $42, $C1, $21, $82 ; inline Z80: continued
-    DB      $61, $21, $82, $81, $14, $82, $C2, $22 ; inline Z80: continued
-    DB      $83, $E4, $1C, $01, $82, $DC, $41, $82 ; inline Z80: continued
-    DB      $9E, $22, $82, $7D, $31, $02, $BF, $1E ; inline Z80: continued
-    DB      $00, $BF, $14, $42, $3D, $21, $42, $DD ; inline Z80: continued
-    DB      $21, $4E, $23, $05, $4E, $C3, $05, $8E ; inline Z80: continued
-    DB      $63, $05, $4D, $2A, $05, $4D, $CA, $05 ; inline Z80: continued
-    DB      $8D, $6A, $05, $4E, $31, $05, $4E, $D1 ; inline Z80: continued
-    DB      $05, $8E, $71, $05, $4D, $38, $05, $4D ; inline Z80: continued
-    DB      $D8, $05, $8D, $78, $05, $5C, $68, $02 ; inline Z80: continued
-    DB      $5C, $88, $02, $9C, $08, $02, $9C, $28 ; inline Z80: continued
-    DB      $02, $5C, $76, $02, $5C, $96, $02, $9C ; inline Z80: continued
-    DB      $16, $02, $9C, $36, $02, $5C, $2F, $02 ; inline Z80: continued
-    DB      $5C, $CF, $02, $9C, $6F, $02, $9E, $83 ; inline Z80: continued
-    DB      $1A, $9E, $A2, $1C, $9F, $A3, $1A, $9F ; inline Z80: continued
-    DB      $C4, $18, $A5, $05, $60, $6C, $60, $73 ; inline Z80: continued
-    DB      $A4, $19, $50, $71, $50, $90, $31, $E0 ; inline Z80: continued
-    DB      $04, $4C, $03, $07, $51, $03, $08, $0F ; inline Z80: continued
-    DB      $09, $42, $27, $B1, $44, $20, $04, $42 ; inline Z80: continued
-    DB      $60, $1C, $83, $E0, $20, $01, $98, $4F ; inline Z80: continued
-    DB      $06, $82, $43, $35, $42, $CD, $2A, $82 ; inline Z80: continued
-    DB      $2A, $26, $42, $AA, $B1, $82, $51, $51 ; inline Z80: continued
-    DB      $82, $71, $24, $42, $5F, $1D, $42, $39 ; inline Z80: continued
-    DB      $71, $9E, $61, $02, $9F, $81, $02, $9F ; inline Z80: continued
-    DB      $A1, $02, $9F, $C1, $02, $9E, $4B, $02 ; inline Z80: continued
-    DB      $9F, $6B, $02, $9F, $8B, $02, $9F, $AB ; inline Z80: continued
-    DB      $02, $9F, $CB, $02, $9F, $D3, $0C, $9E ; inline Z80: continued
-    DB      $B3, $0C, $69, $D4, $6A, $D1, $5C, $E7 ; inline Z80: continued
-    DB      $02, $22, $A1, $62, $DB, $60, $4B, $60 ; inline Z80: continued
-    DB      $4E, $59, $3A, $0A, $59, $3D, $09, $0A ; inline Z80: continued
-    DB      $A4, $0D, $31, $71, $71, $70, $30, $95 ; inline Z80: continued
-    DB      $90, $30, $E0, $08, $0F, $09, $42, $20 ; inline Z80: continued
-    DB      $11, $43, $3F, $02, $0F, $83, $E0, $20 ; inline Z80: continued
-    DB      $01, $83, $61, $1E, $01, $43, $21, $1E ; inline Z80: continued
-    DB      $01, $42, $C1, $91, $42, $D2, $D1, $85 ; inline Z80: continued
-    DB      $A1, $02, $86, $8C, $03, $85, $91, $03 ; inline Z80: continued
-    DB      $86, $BD, $02, $9F, $C3, $09, $9F, $D4 ; inline Z80: continued
-    DB      $09, $9E, $A2, $0B, $9E, $B3, $0B, $58 ; inline Z80: continued
-    DB      $25, $05, $58, $39, $05, $98, $6F, $05 ; inline Z80: continued
-    DB      $59, $6E, $07, $70, $66, $90, $70, $60 ; inline Z80: continued
-    DB      $3E, $03, $67, $90, $A7, $4B, $90, $30 ; inline Z80: continued
-    DB      $A2, $03, $80, $20, $14, $00, $AD, $64 ; inline Z80: continued
-    DB      $58, $2F, $0F, $22, $AD, $22, $AF, $22 ; inline Z80: continued
-    DB      $B1, $31, $80, $3E, $0B, $08, $0F, $09 ; inline Z80: continued
-    DB      $58, $2F, $0F, $02, $AA, $15, $02, $B5 ; inline Z80: continued
-    DB      $15, $9F, $A0, $20, $9F, $C0, $20, $9E ; inline Z80: continued
-    DB      $80, $20, $42, $2F, $21, $03, $A0, $01 ; inline Z80: continued
-    DB      $12, $83, $E0, $20, $01, $82, $61, $24 ; inline Z80: continued
-    DB      $85, $A3, $02, $82, $85, $13, $82, $88 ; inline Z80: continued
-    DB      $13, $82, $8B, $13, $86, $AC, $02, $82 ; inline Z80: continued
-    DB      $6E, $44, $82, $D2, $31, $82, $75, $14 ; inline Z80: continued
-    DB      $82, $78, $24, $82, $BA, $11, $82, $DA ; inline Z80: continued
-    DB      $31, $82, $7D, $24, $42, $3F, $1E, $42 ; inline Z80: continued
-    DB      $21, $31, $42, $44, $11, $82, $41, $11 ; inline Z80: continued
-    DB      $82, $3B, $21, $42, $BD, $11, $42, $84 ; inline Z80: continued
-    DB      $11, $42, $C5, $21, $82, $02, $21, $42 ; inline Z80: continued
-    DB      $89, $21, $42, $CB, $11, $82, $2A, $11 ; inline Z80: continued
-    DB      $42, $EE, $11, $42, $72, $21, $42, $D4 ; inline Z80: continued
-    DB      $21, $42, $56, $21, $42, $99, $11, $82 ; inline Z80: continued
-    DB      $19, $11, $42, $FB, $21, $42, $3C, $31 ; inline Z80: continued
-    DB      $98, $6F, $05, $9F, $A4, $01, $9F, $AC ; inline Z80: continued
-    DB      $01, $23, $A2, $D1, $0C, $A2, $02, $3E ; inline Z80: continued
-    DB      $13, $0B, $B9, $21, $BB, $31, $70, $3E ; inline Z80: continued
-    DB      $0B, $0B, $A8, $0B, $AF, $0B, $B6, $20 ; inline Z80: continued
-    DB      $B1, $20, $AD, $32, $20, $32, $30, $3F ; inline Z80: continued
-    DB      $16, $62, $C3, $60, $4F, $60, $51, $69 ; inline Z80: continued
-    DB      $CB, $5C, $27, $07, $30, $65, $31, $61 ; inline Z80: continued
-    DB      $90, $71, $10, $30, $10, $3E, $0B, $58 ; inline Z80: continued
-    DB      $2F, $0F, $02, $8A, $15, $02, $95, $15 ; inline Z80: continued
-    DB      $23, $AF, $11, $00, $AA, $14, $11, $0C ; inline Z80: continued
-    DB      $AF, $02, $3E, $1B, $08, $0F, $09, $20 ; inline Z80: continued
-    DB      $A2, $20, $A5, $22, $BB, $22, $BD, $02 ; inline Z80: continued
-    DB      $BF, $14, $3E, $0E, $08, $0F, $09, $30 ; inline Z80: continued
-    DB      $90, $31, $52, $08, $0F, $09, $4E, $EB ; inline Z80: continued
-    DB      $0A, $43, $20, $20, $01, $42, $40, $1A ; inline Z80: continued
-    DB      $82, $80, $33, $82, $A3, $22, $83, $E0 ; inline Z80: continued
-    DB      $20, $01, $83, $47, $12, $01, $82, $9D ; inline Z80: continued
-    DB      $33, $82, $BB, $22, $42, $5F, $1A, $42 ; inline Z80: continued
-    DB      $E9, $31, $42, $F4, $31, $A9, $6A, $A9 ; inline Z80: continued
-    DB      $75, $64, $6D, $64, $71, $9C, $41, $05 ; inline Z80: continued
-    DB      $9C, $5A, $05, $58, $29, $06, $58, $35 ; inline Z80: continued
-    DB      $06, $58, $EF, $03, $98, $EF, $01, $31 ; inline Z80: continued
-    DB      $50, $3E, $0F, $3E, $19, $20, $AE, $20 ; inline Z80: continued
-    DB      $B1, $30, $80, $03, $A0, $20, $13, $01 ; inline Z80: continued
-    DB      $A4, $18, $04, $41, $41, $1E, $04, $41 ; inline Z80: continued
-    DB      $E1, $1E, $04, $08, $0F, $09, $58, $26 ; inline Z80: continued
-    DB      $05, $58, $D5, $05, $98, $6F, $05, $60 ; inline Z80: continued
-    DB      $4C, $27, $EB, $67, $89, $A7, $33, $90 ; inline Z80: continued
-    DB      $0B, $AD, $0B, $B2, $3E, $17, $02, $9F ; inline Z80: continued
-    DB      $25, $32, $80, $32, $86, $32, $D6, $3E ; inline Z80: continued
-    DB      $17, $02, $A0, $14, $71, $80, $71, $86 ; inline Z80: continued
-    DB      $71, $12, $71, $D2, $3E, $13, $30, $20 ; inline Z80: continued
-    DB      $30, $C0, $3E, $0B, $32, $10, $32, $80 ; inline Z80: continued
-    DB      $3F, $10, $18, $0F, $09, $60, $84, $60 ; inline Z80: continued
-    DB      $46, $31, $70, $30, $72, $30, $88, $43 ; inline Z80: continued
-    DB      $20, $20, $0F, $02, $A0, $14, $08, $0F ; inline Z80: continued
-    DB      $09, $31, $50, $32, $D0, $3F, $2B, $08 ; inline Z80: continued
-    DB      $0F, $09, $31, $10, $27, $E5, $04, $4C ; inline Z80: continued
-    DB      $03, $07, $51, $03, $03, $94, $0C, $14 ; inline Z80: continued
-    DB      $42, $13, $15, $42, $2D, $61, $42, $AA ; inline Z80: continued
-    DB      $A1, $42, $D1, $3A, $82, $49, $61, $82 ; inline Z80: continued
-    DB      $6D, $45, $82, $E1, $C1, $02, $80, $C1 ; inline Z80: continued
-    DB      $42, $21, $61, $03, $A0, $01, $12, $08 ; inline Z80: continued
-    DB      $0F, $09, $98, $4F, $06, $59, $23, $0A ; inline Z80: continued
-    DB      $59, $25, $0B, $9E, $A1, $0C, $9F, $C1 ; inline Z80: continued
-    DB      $0C, $30, $10, $31, $65, $90, $31, $51 ; inline Z80: continued
-    DB      $3E, $22, $02, $A0, $84, $29, $AB, $29 ; inline Z80: continued
-    DB      $B4, $A9, $6C, $A9, $73, $65, $6D, $65 ; inline Z80: continued
-    DB      $71, $71, $53, $98, $EF, $01, $3E, $22 ; inline Z80: continued
-    DB      $2A, $AB, $2A, $B4, $AA, $6C, $AA, $73 ; inline Z80: continued
-    DB      $64, $6D, $64, $71, $98, $EF, $01, $31 ; inline Z80: continued
-    DB      $20, $31, $79, $3E, $0B, $02, $94, $C5 ; inline Z80: continued
-    DB      $22, $AD, $20, $B0, $71, $20, $3E, $0B ; inline Z80: continued
-    DB      $02, $A0, $14, $2A, $B9, $58, $2F, $0F ; inline Z80: continued
-    DB      $90, $30, $40, $43, $20, $20, $0F, $40 ; inline Z80: continued
-    DB      $4A, $B5, $08, $0F, $09, $70, $50, $58 ; inline Z80: continued
-    DB      $2A, $06, $58, $34, $06, $58, $EF, $09 ; inline Z80: continued
-    DB      $3E, $22, $66, $6F, $31, $75, $71, $73 ; ">"fo1uqs"
-    DB      $90, $30, $49, $3F, $16, $03, $B2, $0E ; inline Z80: continued large game block
-    DB      $12, $90, $30, $10, $3E, $10, $18, $0F ; inline Z80: continued
-    DB      $09, $60, $50, $31, $70, $31, $92, $31 ; inline Z80: continued
-    DB      $18, $3E, $13, $30, $30, $3E, $0B, $58 ; inline Z80: continued
-    DB      $2F, $10, $31, $80, $31, $70, $3E, $0B ; inline Z80: continued
-    DB      $08, $0F, $09, $00, $BF, $14, $02, $B8 ; inline Z80: continued
-    DB      $14, $30, $40, $70, $80, $3E, $31, $70 ; inline Z80: continued
-    DB      $40, $3E, $0B, $30, $40, $3E, $22, $A9 ; inline Z80: continued
-    DB      $67, $A9, $77, $64, $6D, $64, $71, $31 ; inline Z80: continued
-    DB      $49, $3E, $22, $29, $AB, $29, $B4, $25 ; inline Z80: continued
-    DB      $AD, $25, $B1, $A5, $6D, $A5, $71, $65 ; inline Z80: continued
-    DB      $6C, $65, $72, $31, $99, $31, $83, $31 ; inline Z80: continued
-    DB      $85, $31, $C0, $3E, $22, $2A, $AB, $2A ; inline Z80: continued
-    DB      $B4, $AA, $67, $AA, $78, $64, $6C, $64 ; inline Z80: continued
-    DB      $72, $71, $83, $31, $49, $3E, $32, $27 ; inline Z80: continued
-    DB      $F6, $02, $0F, $29, $90, $30, $20, $3E ; inline Z80: continued
-    DB      $23, $90, $27, $E7, $0B, $A6, $0B, $A9 ; inline Z80: continued
-    DB      $30, $90, $3E, $13, $02, $A0, $24, $23 ; inline Z80: continued
-    DB      $A3, $21, $BB, $21, $A5, $31, $90, $32 ; inline Z80: continued
-    DB      $90, $51, $23, $A3, $3E, $27, $00, $A0 ; inline Z80: continued
-    DB      $14, $02, $BF, $14, $71, $30, $71, $12 ; inline Z80: continued
-    DB      $71, $B2, $71, $36, $3E, $16, $62, $DB ; inline Z80: continued
-    DB      $60, $4A, $60, $4E, $71, $70, $31, $71 ; "`J`Nqp1q"
-    DB      $30, $85, $3E, $05, $80, $6C, $14, $82 ; inline Z80: continued large game block
-    DB      $53, $31, $8B, $73, $8B, $74, $8B, $75 ; inline Z80: continued
-    DB      $65, $CE, $A0, $77, $31, $F2, $31, $10 ; inline Z80: continued
-    DB      $30, $99, $90, $30, $D0, $3E, $17, $71 ; inline Z80: continued
-    DB      $10, $90, $31, $32, $31, $D2, $71, $A6 ; inline Z80: continued
-    DB      $3E, $0B, $08, $0F, $09, $0B, $A8, $0B ; inline Z80: continued
-    DB      $AC, $30, $20, $30, $30, $3E, $37, $72 ; inline Z80: continued
-    DB      $20, $32, $30, $90, $02, $A0, $14, $3E ; inline Z80: continued
-    DB      $02, $18, $0F, $06, $66, $62, $30, $20 ; inline Z80: continued
-    DB      $90, $30, $A0, $3E, $0B, $31, $50, $70 ; inline Z80: continued
-    DB      $30, $02, $BE, $24, $20, $B2, $20, $B6 ; inline Z80: continued
-    DB      $20, $BA, $10, $23, $AF, $00, $B2, $E4 ; inline Z80: continued
-    DB      $02, $A0, $24, $20, $A4, $20, $A8, $20 ; inline Z80: continued
-    DB      $AC, $50, $00, $A3, $A4, $11, $0C, $AF ; inline Z80: continued
-    DB      $02, $91, $00, $A0, $34, $3E, $13, $43 ; inline Z80: continued
-    DB      $E2, $1D, $08, $5C, $23, $1A, $42, $2E ; inline Z80: continued
-    DB      $46, $08, $0F, $09, $5F, $D2, $02, $31 ; inline Z80: continued
-    DB      $30, $31, $A0, $3E, $0B, $32, $30, $32 ; inline Z80: continued
-    DB      $A0, $3E, $0B, $08, $0F, $09, $27, $EC ; inline Z80: continued
-    DB      $27, $F1, $3E, $22, $29, $AB, $29, $B4 ; inline Z80: continued
-    DB      $66, $6C, $64, $72, $82, $EF, $21, $71 ; inline Z80: continued
-    DB      $43, $3E, $22, $29, $AB, $29, $B4, $AA ; inline Z80: continued
-    DB      $67, $AA, $77, $64, $6C, $65, $72, $31 ; inline Z80: continued
-    DB      $20, $71, $43, $3E, $45, $30, $40, $30 ; " qC>E0@0"
-    DB      $20, $3E, $32, $70, $40, $90, $0B, $A9 ; inline Z80: continued large game block
-    DB      $3E, $0F, $3E, $0B, $02, $A0, $24, $20 ; inline Z80: continued
-    DB      $A3, $20, $A5, $20, $A7, $31, $20, $90 ; inline Z80: continued
-    DB      $0B, $A7, $0B, $A9, $0B, $AB, $3E, $0B ; inline Z80: continued
-    DB      $30, $70, $27, $F5, $3E, $2A, $08, $0F ; inline Z80: continued
-    DB      $09, $00, $B1, $14, $A0, $52, $A2, $55 ; inline Z80: continued
-    DB      $82, $CF, $22, $30, $98, $90, $30, $62 ; inline Z80: continued
-    DB      $3E, $2B, $31, $20, $31, $30, $3E, $13 ; inline Z80: continued
-    DB      $27, $F8, $90, $0B, $AF, $27, $E5, $3E ; inline Z80: continued
-    DB      $0B, $08, $0F, $09, $71, $30, $0B, $A4 ; inline Z80: continued
-    DB      $0B, $A5, $0B, $A6, $0B, $A7, $0B, $AB ; inline Z80: continued
-    DB      $0B, $AC, $0B, $AD, $0B, $AE, $0B, $AF ; inline Z80: continued
-    DB      $0B, $B0, $0B, $B1, $0B, $B2, $0B, $B3 ; inline Z80: continued
-    DB      $0B, $B7, $0B, $B8, $0B, $B9, $0B, $BA ; inline Z80: continued
-    DB      $43, $20, $20, $0F, $90, $31, $50, $3E ; inline Z80: continued
-    DB      $13, $08, $0F, $09, $2B, $AC, $2B, $B4 ; inline Z80: continued
-    DB      $3F, $5B, $66, $F5, $2B, $BB, $6B, $5B ; inline Z80: continued
-    DB      $50, $31, $10, $31, $36, $90, $30, $A2 ; inline Z80: continued
-    DB      $07, $A9, $07, $04, $B0, $06, $42, $20 ; inline Z80: continued
-    DB      $41, $42, $C0, $71, $82, $60, $91, $42 ; inline Z80: continued
-    DB      $3B, $51, $42, $D8, $81, $82, $76, $A1 ; inline Z80: continued
-    DB      $9E, $80, $09, $9E, $A9, $01, $9E, $CA ; inline Z80: continued
-    DB      $01, $9E, $EB, $01, $9E, $96, $0A, $9E ; inline Z80: continued
-    DB      $B5, $01, $9E, $D4, $01, $9E, $F3, $01 ; inline Z80: continued
-    DB      $9F, $A0, $09, $9F, $C0, $0A, $9F, $E0 ; inline Z80: continued
-    DB      $0B, $9F, $B6, $0B, $9F, $D5, $0C, $9F ; inline Z80: continued
-    DB      $F4, $0D, $60, $8F, $60, $CF, $A0, $0F ; inline Z80: continued
-    DB      $A0, $4F, $A0, $8F, $60, $CB, $60, $D3 ; inline Z80: continued
-    DB      $A0, $0C, $A0, $12, $A0, $4D, $A0, $51 ; inline Z80: continued
-    DB      $66, $E9, $2B, $A3, $2A, $B6, $29, $BA ; inline Z80: continued
-    DB      $6B, $43, $4B, $F1, $42, $E0, $34, $43 ; inline Z80: continued
-    DB      $20, $20, $01, $43, $C0, $20, $01, $83 ; inline Z80: continued
-    DB      $60, $20, $01, $83, $E0, $20, $01, $47 ; inline Z80: continued
-    DB      $5B, $02, $42, $5D, $34, $47, $FA, $02 ; inline Z80: continued
-    DB      $42, $FC, $44, $87, $98, $03, $82, $9B ; inline Z80: continued
-    DB      $54, $9F, $C0, $1B, $9E, $A0, $1A, $58 ; inline Z80: continued
-    DB      $26, $05, $58, $D6, $05, $9C, $65, $0C ; inline Z80: continued
-    DB      $50, $30, $50, $3E, $13, $27, $F0, $90 ; inline Z80: continued
-    DB      $70, $30, $3E, $13, $27, $EF, $20, $AE ; inline Z80: continued
-    DB      $20, $B0, $90, $30, $A0, $3E, $57, $90 ; inline Z80: continued
-    DB      $30, $50, $3E, $0A, $2B, $AB, $2B, $B3 ; inline Z80: continued
-    DB      $3E, $13, $31, $40, $3E, $13, $08, $0F ; inline Z80: continued
-    DB      $09, $03, $B3, $0D, $13, $31, $60, $31 ; inline Z80: continued
-    DB      $40, $90, $0B, $AA, $3E, $13, $08, $0F ; inline Z80: continued
-    DB      $09, $03, $A0, $0D, $13, $30, $80, $30 ; sound channel init data: flags+freq table (start)
-    DB      $A0, $90, $0B, $B4, $3E, $0B, $02, $BF ; sound channel init data: continued
-    DB      $14, $22, $B1, $22, $B3, $22, $B5, $20 ; sound channel init data: continued
-    DB      $B7, $20, $B9, $20, $BB, $01, $00, $01 ; sound channel init data: continued
-    DB      $08, $01, $00, $02, $88, $89, $10, $11 ; sound channel init data: note repeat sequence
-    DB      $02, $00, $00, $00, $00, $01, $90, $C4 ; sound channel init data: note repeat continued
-    DB      $01, $95, $01, $E0, $01, $06, $05, $04 ; sound channel init data: note repeat continued
-    DB      $01, $BA, $B9, $B8, $01, $E8, $02, $08 ; sound channel init data: note repeat continued
-    DB      $08, $FF, $D2, $D3, $D4, $D5, $D2, $D3 ; sound channel init data: continued
-    DB      $D4, $D5, $D2, $D3, $D4, $D5, $D2, $D3 ; sound channel init data: continued
-    DB      $D4, $D5, $D2, $D3, $D4, $D5, $D2, $D3 ; sound channel init data: continued
-    DB      $D4, $D5, $D2, $D3, $D4, $D5, $38, $01 ; sound channel init data: continued
-    DB      $38, $02, $98, $D8, $99, $D9, $02, $A8 ; sound channel init data: continued
-    DB      $AE, $A9, $AF, $02, $96, $97, $9A, $9B ; sound channel init data: continued
-    DB      $02, $D0, $D1, $62, $63, $02, $78, $79 ; sound channel init data: continued
-    DB      $7A, $7B, $02, $68, $69, $6A, $6B, $02 ; sound channel init data: continued
-    DB      $70, $71, $72, $73, $02, $B0, $B7, $B1 ; sound channel init data: continued
-    DB      $B2, $B3, $B3, $02, $BB, $9C, $BC, $BD ; sound channel init data: continued
-    DB      $BE, $BE, $02, $C0, $C7, $C1, $C2, $C3 ; sound channel init data: end + tile IDs "ulm"
-    DB      $C3, $02, $A0, $A1, $A2, $A3, $02, $A5 ; sound channel init data: continued bytes
-    DB      $A4, $A7, $A6, $0C, $2C, $0F, $0C, $0F ; sound channel init data: continued
-    DB      $0C, $02, $60, $AE, $61, $AF, $02, $74 ; sound channel init data: final bytes before SOUND_WRITE_A067
-    DB      $75, $6C, $6D                   ; "ulm"
+; -----------------------------------------------------------------------------
+; Tiles that stop Joe and the enemies moving sideways.
+; -----------------------------------------------------------------------------
+WALL_TILES:
 
-SOUND_WRITE_A067:
-    CALL    SUB_AE77                        ; CALL SUB_AE77: blank VDP display (INC $70B3)
-    CALL    TURN_OFF_SOUND                  ; CALL TURN_OFF_SOUND: silence all SN76489A channels
-    LD      HL, $7086                       ; HL = $7086 (sound channel 1 data slot)
-    PUSH    HL                              ; PUSH HL
-    POP     DE                              ; POP DE (DE = $7086)
-    LD      BC, $000E                       ; BC = $000E (14 bytes: 7 sound channel slots x 2)
-    LD      (HL), $FF                       ; (HL) = $FF (seed: mark all slots free)
-    INC     DE                              ; INC DE
-    LDIR                                    ; LDIR: fill $7086..$7093 with $FF (clear channel data)
-    LD      BC, $001E                       ; BC = $001E (30 bytes)
-    LD      HL, $72C0                       ; HL = $72C0 (room tile/collision data buffer)
-    PUSH    HL                              ; PUSH HL
-    POP     DE                              ; POP DE
-    LD      (HL), $00                       ; (HL) = $00
-    INC     DE                              ; INC DE
-    LDIR                                    ; LDIR: zero-fill $72C0..$72DD (clear tile-collision buffer)
-    LD      A, $FE                          ; A = $FE (end-of-table sentinel)
-    LD      (DE), A                         ; (DE) = $FE: write sentinel at end
-    DEC     DE                              ; DEC DE
-    LD      (DE), A                         ; (DE) = $FE: write second sentinel (two-byte guard)
-    CALL    SUB_A1DF                        ; CALL SUB_A1DF: fill VRAM tile-name table ($18A0 + $260 bytes)
-    CALL    SUB_A4B5                        ; CALL SUB_A4B5: speed table lookup -> A
-    LD      ($7015), A                      ; ($7015) = A: store current speed in RAM
-    CALL    SUB_A4CE                        ; CALL SUB_A4CE: copy 4-byte speed-record to $7190
-    XOR     A                               ; A = $00
-    LD      ($71A2), A                      ; ($71A2) = $00: clear animation frame index
-    LD      A, ($71A5)                      ; A = ($71A5) (tile difficulty level)
-    SLA     A                               ; SLA A: double level
-    LD      ($71A1), A                      ; ($71A1) = A: store doubled level as initial velocity
+    DB      $08, $B0, $BB, $C0, $B7, $9C, $C7, $0B; brick, doors, walls
 
-LOC_A0A4:
-    LD      A, ($7190)                      ; A = ($7190) lo byte of speed record pointer
-    LD      HL, $7192                       ; HL = $7192
-    CP      (HL)                            ; CP (HL): compare lo vs current pointer
-    JR      Z, LOC_A0AF                     ; JR Z, LOC_A0AF: lo bytes match -> check hi
-    JR      C, LOC_A115                     ; JR C, LOC_A115: lo < current -> process note
+; -----------------------------------------------------------------------------
+; ROOM DATA
+;
+; Each room is a list of commands, run by LOAD_ROOM ($A067). A command's
+; first byte: bits 0-5 are the command, bits 6-7 bits 8-9 of its name table
+; position, whose low 8 bits are the next byte. CMD_GROUPS gives each
+; command its tile group, an offset into TILE_GROUPS.
+;
+;   $00-$03  block: tile, then size (hi nibble wide, lo high), or for odd
+;            commands wide and high in two bytes
+;   $04-$07  slope: square of one tile, then steps of another carved in;
+;   $14-$17  bit 4: steps 2 rows high, bit 0: steps right-aligned
+;   $08-$0A  column of the group's tiles, then the height
+;   $18-$1B  the same, with the group's next tiles on top
+;   $0B      barrier, 4 high (2-byte command)
+;   $0C-$0F  row: end tile, middle tiles, end tile, then the width
+;   $10/$11  1-byte command: end the list (or included list) below level
+;            (bits 6-7) + 2 / + 6
+;   $1C-$1F  row of the group's tiles, repeated; or, for a group whose
+;            count is $FF, that many tiles of its run
+;   $20-$28  item or creature, 2x2 tiles   } 2-byte commands, skipped
+;   $29-$2F  door, 1x4 tiles               } inside an included room; each
+;   $30-$32  enemy; the second byte is the } is a "thing": bit n of the
+;            start position (lo nibble Y,  } room's 2 bytes at $70C0 set
+;            hi nibble X), bit 6 fast      } means thing n is gone
+;   $3E/$3F  draw another room's shapes (its number follows), then for $3F
+;            mirror the screen; the room's own commands draw over it
+; -----------------------------------------------------------------------------
+CMD_GROUPS:                                 ; tile group of each command
 
-LOC_A0AF:
-    LD      A, ($7191)                      ; A = ($7191) hi byte
-    INC     HL                              ; INC HL -> $7193
-    CP      (HL)                            ; CP (HL): compare hi bytes
-    JR      NZ, LOC_A115                    ; JR NZ, LOC_A115: hi differs -> process note
+    DB      $00                             ; $00
+    DB      $00                             ; $01
+    DB      $02                             ; $02
+    DB      $02                             ; $03
+    DB      $02                             ; $04
+    DB      $00                             ; $05
+    DB      $00                             ; $06
+    DB      $02                             ; $07
+    DB      $06                             ; $08
+    DB      $10                             ; $09
+    DB      $13                             ; $0A
+    DB      $15                             ; $0B
+    DB      $0B                             ; $0C
+    DB      $1B                             ; $0D
+    DB      $17                             ; $0E
+    DB      $FF                             ; $0F (unused)
+    DB      $FF                             ; $10 (level check)
+    DB      $FF                             ; $11 (level check)
+    DB      $FF                             ; $12 (unused)
+    DB      $FF                             ; $13 (unused)
+    DB      $02                             ; $14
+    DB      $00                             ; $15
+    DB      $00                             ; $16
+    DB      $02                             ; $17
+    DB      $06                             ; $18
+    DB      $10                             ; $19
+    DB      $FF                             ; $1A (unused)
+    DB      $FF                             ; $1B (unused)
+    DB      $1F                             ; $1C
+    DB      $21                             ; $1D
+    DB      $24                             ; $1E
+    DB      $42                             ; $1F
+    DB      $44                             ; $20
+    DB      $49                             ; $21
+    DB      $4E                             ; $22
+    DB      $53                             ; $23
+    DB      $58                             ; $24
+    DB      $5D                             ; $25
+    DB      $62                             ; $26
+    DB      $7C                             ; $27
+    DB      $81                             ; $28
+    DB      $67                             ; $29
+    DB      $6E                             ; $2A
+    DB      $75                             ; $2B
+    DB      $FF                             ; $2C (unused)
+    DB      $FF                             ; $2D (unused)
+    DB      $FF                             ; $2E (unused)
+    DB      $FF                             ; $2F (unused)
+    DB      $86                             ; $30
+    DB      $8A                             ; $31
+    DB      $88                             ; $32
 
-LOC_A0B6:
-    LD      A, ($7194)                      ; A = ($7194) note duration countdown
-    CP      $00                             ; CP $00: done?
-    JR      Z, LOC_A0E7                     ; JR Z, LOC_A0E7: duration expired -> check end-condition
-    DEC     A                               ; DEC A
-    LD      ($7194), A                      ; ($7194) = A: tick duration counter
-    LD      A, ($7195)                      ; A = ($7195)
-    CP      $00                             ; CP $00
-    JR      Z, LOC_A0CB                     ; JR Z, LOC_A0CB: zero -> skip pending note
-    CALL    SUB_AB29                        ; CALL SUB_AB29: send pending note byte to SN76489A
+ROOM_LISTS:                                 ; where each room's list starts; the next one's start ends it
+    DW      ROOM_LIST_00                    ; room 0
+    DW      ROOM_LIST_01                    ; room 1
+    DW      ROOM_LIST_02                    ; room 2
+    DW      ROOM_LIST_03                    ; room 3
+    DW      ROOM_LIST_04                    ; room 4
+    DW      ROOM_LIST_05                    ; room 5
+    DW      ROOM_LIST_06                    ; room 6
+    DW      ROOM_LIST_07                    ; room 7
+    DW      ROOM_LIST_08                    ; room 8
+    DW      ROOM_LIST_09                    ; room 9
+    DW      ROOM_LIST_10                    ; room 10
+    DW      ROOM_LIST_11                    ; room 11
+    DW      ROOM_LIST_12                    ; room 12
+    DW      ROOM_LIST_13                    ; room 13
+    DW      ROOM_LIST_14                    ; room 14
+    DW      ROOM_LIST_15                    ; room 15
+    DW      ROOM_LIST_16                    ; room 16
+    DW      ROOM_LIST_17                    ; room 17
+    DW      ROOM_LIST_18                    ; room 18
+    DW      ROOM_LIST_19                    ; room 19
+    DW      ROOM_LIST_20                    ; room 20
+    DW      ROOM_LIST_21                    ; room 21
+    DW      ROOM_LIST_22                    ; room 22
+    DW      ROOM_LIST_23                    ; room 23
+    DW      ROOM_LIST_24                    ; room 24
+    DW      ROOM_LIST_25                    ; room 25
+    DW      ROOM_LIST_26                    ; room 26
+    DW      ROOM_LIST_27                    ; room 27
+    DW      ROOM_LIST_28                    ; room 28
+    DW      ROOM_LIST_29                    ; room 29
+    DW      ROOM_LIST_30                    ; room 30
+    DW      ROOM_LIST_31                    ; room 31
+    DW      ROOM_LIST_32                    ; room 32
+    DW      ROOM_LIST_33                    ; room 33
+    DW      ROOM_LIST_34                    ; room 34
+    DW      ROOM_LIST_35                    ; room 35
+    DW      ROOM_LIST_36                    ; room 36
+    DW      ROOM_LIST_37                    ; room 37
+    DW      ROOM_LIST_38                    ; room 38
+    DW      ROOM_LIST_39                    ; room 39
+    DW      ROOM_LIST_40                    ; room 40
+    DW      ROOM_LIST_41                    ; room 41
+    DW      ROOM_LIST_42                    ; room 42
+    DW      ROOM_LIST_43                    ; room 43
+    DW      ROOM_LIST_44                    ; room 44
+    DW      ROOM_LIST_45                    ; room 45
+    DW      ROOM_LIST_46                    ; room 46
+    DW      ROOM_LIST_47                    ; room 47
+    DW      ROOM_LIST_48                    ; room 48
+    DW      ROOM_LIST_49                    ; room 49
+    DW      ROOM_LIST_50                    ; room 50
+    DW      ROOM_LIST_51                    ; room 51
+    DW      ROOM_LIST_52                    ; room 52
+    DW      ROOM_LIST_53                    ; room 53
+    DW      ROOM_LIST_54                    ; room 54
+    DW      ROOM_LIST_55                    ; room 55
+    DW      ROOM_LIST_56                    ; room 56
+    DW      ROOM_LIST_57                    ; room 57
+    DW      ROOM_LIST_58                    ; room 58
+    DW      ROOM_LIST_59                    ; room 59
+    DW      ROOM_LIST_60                    ; room 60
+    DW      ROOM_LIST_61                    ; room 61
+    DW      ROOM_LIST_62                    ; room 62
+    DW      ROOM_LIST_63                    ; room 63
+    DW      ROOM_LIST_64                    ; room 64
+    DW      ROOM_LIST_65                    ; room 65
+    DW      ROOM_LIST_66                    ; room 66
+    DW      ROOM_LIST_67                    ; room 67
+    DW      ROOM_LIST_68                    ; room 68
+    DW      ROOM_LIST_69                    ; room 69
+    DW      ROOM_LIST_70                    ; room 70
+    DW      ROOM_LIST_71                    ; room 71
+    DW      ROOM_LIST_72                    ; room 72
+    DW      ROOM_LIST_73                    ; room 73
+    DW      ROOM_LIST_74                    ; room 74
+    DW      ROOM_LIST_75                    ; room 75
+    DW      ROOM_LIST_76                    ; room 76
+    DW      ROOM_LIST_77                    ; room 77
+    DW      ROOM_LIST_78                    ; room 78
+    DW      ROOM_LIST_79                    ; room 79
+    DW      ROOM_LIST_80                    ; room 80
+    DW      ROOM_LIST_81                    ; room 81
+    DW      ROOM_LIST_82                    ; room 82
+    DW      ROOM_LIST_83                    ; room 83
+    DW      ROOM_LIST_84                    ; room 84
+    DW      ROOM_LIST_85                    ; room 85
+    DW      ROOM_LIST_86                    ; room 86
+    DW      ROOM_LIST_87                    ; room 87
+    DW      ROOM_LIST_88                    ; room 88
+    DW      ROOM_LIST_89                    ; room 89
+    DW      ROOM_LIST_90                    ; room 90
+    DW      ROOM_LIST_91                    ; room 91
+    DW      ROOM_LIST_92                    ; room 92
+    DW      ROOM_LIST_93                    ; room 93
+    DW      ROOM_LIST_94                    ; room 94
+    DW      ROOM_LIST_95                    ; room 95
+    DW      ROOM_LIST_96                    ; room 96
+    DW      ROOM_LIST_97                    ; room 97
+    DW      ROOM_LIST_98                    ; room 98
+    DW      ROOM_LIST_99                    ; room 99
+    DW      ROOM_LISTS_END                  ; end of room 99
 
-LOC_A0CB:
-    POP     AF                              ; POP AF: restore saved A (tile index)
-    LD      ($7195), A                      ; RAM $7195
-    LD      B, $04                          ; LD B,$04: loop counter = 4 (4 entity bytes)
-    LD      HL, $7193                       ; RAM $7193
+ROOM_LIST_00:
+    DB      $01, $00, $20, $0F              ; block of $00 blank, row 0 col 0, 32 wide x 15 high
+    DB      $96, $49, $03                   ; slope, row 18 col 9: $08 brick 3 wide x 6 high, then 2 steps of $00 blank 2 high, left-aligned
+    DB      $95, $54, $03                   ; slope, row 18 col 20: $08 brick 3 wide x 6 high, then 2 steps of $00 blank 2 high, right-aligned
+    DB      $82, $4C, $86                   ; block of $08 brick, row 18 col 12, 8 wide x 6 high
+    DB      $03, $00, $01, $18              ; block of $08 brick, row 0 col 0, 1 wide x 24 high
+    DB      $83, $E0, $20, $01              ; block of $08 brick, row 23 col 0, 32 wide x 1 high
+    DB      $0A, $02, $17                   ; pole column ($95), row 0 col 2, 23 high
+    DB      $0A, $1D, $17                   ; pole column ($95), row 0 col 29, 23 high
+    DB      $03, $1F, $01, $18              ; block of $08 brick, row 0 col 31, 1 wide x 24 high
+    DB      $03, $00, $01, $18              ; block of $08 brick, row 0 col 0, 1 wide x 24 high
+    DB      $80, $6F, $35                   ; block of $00 blank, row 19 col 15, 3 wide x 5 high
+    DB      $99, $50, $06                   ; rope column ($90), row 18 col 16, 6 high, top row $C4
 
-LOC_A0D4:
-    POP     AF                              ; POP AF: pop next saved entity byte
-    LD      (HL), A                         ; LD (HL),A: store byte to entity buffer
-    DEC     HL                              ; DEC HL: step back in buffer
-    DJNZ    LOC_A0D4                        ; DJNZ LOC_A0D4: loop 4 times
+ROOM_LIST_01:
+    DB      $02, $A0, $D4                   ; block of $08 brick, row 5 col 0, 13 wide x 4 high
+    DB      $43, $20, $20, $0F              ; block of $08 brick, row 9 col 0, 32 wide x 15 high
+    DB      $58, $2F, $0F                   ; ladder column ($88 $89), row 9 col 15, 15 high, top row $10 $11
+    DB      $21, $B9                        ; amulet, row 5 col 25 (thing 0)
+    DB      $27, $F5                        ; creature, row 7 col 21 (thing 1)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $31, $70                        ; roller (flags $08), x $70 y $39 (thing 2)
 
-LOC_A0D9:
-    LD      A, $02                          ; LD A,$02: A = $02 (default advance step)
+ROOM_LIST_02:
+    DB      $04, $2C, $04                   ; slope, row 1 col 12: $00 blank 4 wide x 4 high, then 3 steps of $08 brick 1 high, left-aligned
+    DB      $07, $31, $04                   ; slope, row 1 col 17: $00 blank 4 wide x 4 high, then 3 steps of $08 brick 1 high, right-aligned
+    DB      $09, $10, $05                   ; rope column ($90), row 0 col 16, 5 high
+    DB      $2B, $A3                        ; red door, row 5 col 3 (thing 0)
+    DB      $2B, $BC                        ; red door, row 5 col 28 (thing 1)
+    DB      $42, $20, $C1                   ; block of $08 brick, row 9 col 0, 12 wide x 1 high
+    DB      $42, $40, $B8                   ; block of $08 brick, row 10 col 0, 11 wide x 8 high
+    DB      $40, $61, $64                   ; block of $00 blank, row 11 col 1, 6 wide x 4 high
+    DB      $85, $00, $03                   ; slope, row 16 col 0: $08 brick 3 wide x 3 high, then 2 steps of $00 blank 1 high, right-aligned
+    DB      $58, $E3, $08                   ; ladder column ($88 $89), row 15 col 3, 8 high, top row $10 $11
+    DB      $44, $A7, $05                   ; slope, row 13 col 7: $00 blank 5 wide x 5 high, then 4 steps of $08 brick 1 high, left-aligned
+    DB      $82, $40, $36                   ; block of $08 brick, row 18 col 0, 3 wide x 6 high
+    DB      $82, $E3, $71                   ; block of $08 brick, row 23 col 3, 7 wide x 1 high
+    DB      $86, $88, $03                   ; slope, row 20 col 8: $08 brick 3 wide x 3 high, then 2 steps of $00 blank 1 high, left-aligned
+    DB      $82, $AB, $11                   ; block of $08 brick, row 21 col 11, 1 wide x 1 high
+    DB      $82, $98, $84                   ; block of $08 brick, row 20 col 24, 8 wide x 4 high
+    DB      $87, $96, $04                   ; slope, row 20 col 22: $00 blank 4 wide x 4 high, then 3 steps of $08 brick 1 high, right-aligned
+    DB      $83, $8B, $0E, $01              ; block of $08 brick, row 20 col 11, 14 wide x 1 high
+    DB      $42, $3D, $3B                   ; block of $08 brick, row 9 col 29, 3 wide x 11 high
+    DB      $42, $34, $91                   ; block of $08 brick, row 9 col 20, 9 wide x 1 high
+    DB      $42, $56, $21                   ; block of $08 brick, row 10 col 22, 2 wide x 1 high
+    DB      $42, $77, $16                   ; block of $08 brick, row 11 col 23, 1 wide x 6 high
+    DB      $42, $2E, $41                   ; block of $08 brick, row 9 col 14, 4 wide x 1 high
+    DB      $9E, $CE, $09                   ; hazard row, row 22 col 14: the first 9 tiles of the run at +$24
+    DB      $9E, $ED, $0B                   ; hazard row, row 23 col 13: the first 11 tiles of the run at +$24
+    DB      $9F, $EE, $09                   ; hazard row ($38) x 9, row 23 col 14
+    DB      $58, $2F, $08                   ; ladder column ($88 $89), row 9 col 15, 8 high, top row $10 $11
+    DB      $58, $3A, $0B                   ; ladder column ($88 $89), row 9 col 26, 11 high, top row $10 $11
+    DB      $8E, $2C, $08                   ; conveyor (pushes left) row, row 17 col 12, 8 wide: $04, $05s, $06
+    DB      $66, $65                        ; red key, row 11 col 5 (thing 2)
+    DB      $31, $67                        ; roller (flags $08), x $60 y $91 (thing 3)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $31, $20                        ; roller (flags $08), x $20 y $39 (thing 4)
+    DB      $31, $D0                        ; roller (flags $08), x $D0 y $39 (thing 5)
 
-LOC_A0DB:
-    LD      C, A                            ; LD C,A: C = A (byte count for HL advance)
-    LD      B, $00                          ; LD B,$00: B = $00 (zero extend for ADD HL,BC)
-    LD      HL, ($7190)                     ; RAM $7190
-    ADD     HL, BC                          ; ADD HL,BC: advance entity pointer by C bytes
-    LD      ($7190), HL                     ; RAM $7190
-    JR      LOC_A0A4                        ; JR LOC_A0A4: loop back to main dispatch
+ROOM_LIST_03:
+    DB      $3F, $0E                        ; draw room 14's shapes first, then mirror the screen
+    DB      $60, $56                        ; jewel, row 10 col 22 (thing 0)
+    DB      $60, $4B                        ; jewel, row 10 col 11 (thing 1)
+    DB      $60, $4E                        ; jewel, row 10 col 14 (thing 2)
+    DB      $28, $EA                        ; creature, row 7 col 10 (thing 3)
+    DB      $02, $0F, $25                   ; block of $08 brick, row 0 col 15, 2 wide x 5 high
+    DB      $00, $AF, $24                   ; block of $00 blank, row 5 col 15, 2 wide x 4 high
 
-LOC_A0E7:
-    LD      A, ($705F)                      ; A = ($705F) game mode flags
-    BIT     2, A                            ; BIT 2, A: tile-data-ready flag
-    JR      Z, LOC_A0F5                     ; JR Z, LOC_A0F5: not set -> advance to next item sprite
-    LD      A, ($71A8)                      ; A = ($71A8)
-    CP      $0A                             ; CP $0A
-    JR      NZ, LOC_A0F8                    ; JR NZ, LOC_A0F8: not $0A -> skip SOUND_WRITE_A548
+ROOM_LIST_04:
+    DB      $43, $20, $20, $0F              ; block of $08 brick, row 9 col 0, 32 wide x 15 high
+    DB      $02, $AA, $14                   ; block of $08 brick, row 5 col 10, 1 wide x 4 high
+    DB      $20, $B7                        ; jewel, row 5 col 23 (thing 0)
+    DB      $58, $2F, $0F                   ; ladder column ($88 $89), row 9 col 15, 15 high, top row $10 $11
+    DB      $30, $80                        ; climber (flags $48), x $80 y $37 (thing 1)
 
-LOC_A0F5:
-    CALL    SOUND_WRITE_A548                ; CALL SOUND_WRITE_A548: item sprite update (end-of-sequence)
+ROOM_LIST_05:
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $8D, $4B, $0D                   ; conveyor (pushes right) row, row 18 col 11, 13 wide: $B8, $B9s, $BA
+    DB      $42, $20, $BA                   ; block of $08 brick, row 9 col 0, 11 wide x 10 high
+    DB      $40, $A1, $31                   ; block of $00 blank, row 13 col 1, 3 wide x 1 high
+    DB      $40, $45, $29                   ; block of $00 blank, row 10 col 5, 2 wide x 9 high
+    DB      $40, $48, $27                   ; block of $00 blank, row 10 col 8, 2 wide x 7 high
+    DB      $82, $60, $24                   ; block of $08 brick, row 19 col 0, 2 wide x 4 high
+    DB      $42, $8B, $37                   ; block of $08 brick, row 12 col 11, 3 wide x 7 high
+    DB      $42, $AE, $91                   ; block of $08 brick, row 13 col 14, 9 wide x 1 high
+    DB      $42, $8E, $81                   ; block of $08 brick, row 12 col 14, 8 wide x 1 high
+    DB      $82, $4E, $21                   ; block of $08 brick, row 18 col 14, 2 wide x 1 high
+    DB      $42, $2E, $31                   ; block of $08 brick, row 9 col 14, 3 wide x 1 high
+    DB      $42, $39, $71                   ; block of $08 brick, row 9 col 25, 7 wide x 1 high
+    DB      $42, $5F, $1D                   ; block of $08 brick, row 10 col 31, 1 wide x 13 high
+    DB      $83, $E0, $20, $01              ; block of $08 brick, row 23 col 0, 32 wide x 1 high
+    DB      $5C, $41, $03                   ; vanishing floor row ($E8) x 3, row 10 col 1
+    DB      $5C, $61, $03                   ; vanishing floor row ($E8) x 3, row 11 col 1
+    DB      $5C, $81, $03                   ; vanishing floor row ($E8) x 3, row 12 col 1
+    DB      $5C, $C1, $03                   ; vanishing floor row ($E8) x 3, row 14 col 1
+    DB      $5C, $E1, $03                   ; vanishing floor row ($E8) x 3, row 15 col 1
+    DB      $9C, $01, $03                   ; vanishing floor row ($E8) x 3, row 16 col 1
+    DB      $9C, $21, $03                   ; vanishing floor row ($E8) x 3, row 17 col 1
+    DB      $9C, $62, $02                   ; vanishing floor row ($E8) x 2, row 19 col 2
+    DB      $9C, $82, $02                   ; vanishing floor row ($E8) x 2, row 20 col 2
+    DB      $9C, $A2, $02                   ; vanishing floor row ($E8) x 2, row 21 col 2
+    DB      $9C, $C2, $02                   ; vanishing floor row ($E8) x 2, row 22 col 2
+    DB      $5C, $25, $02                   ; vanishing floor row ($E8) x 2, row 9 col 5
+    DB      $5C, $28, $02                   ; vanishing floor row ($E8) x 2, row 9 col 8
+    DB      $5E, $4C, $04                   ; hazard row, row 10 col 12: the first 4 tiles of the run at +$24
+    DB      $5E, $53, $02                   ; hazard row, row 10 col 19: the first 2 tiles of the run at +$24
+    DB      $5E, $6B, $0B                   ; hazard row, row 11 col 11: the first 11 tiles of the run at +$24
+    DB      $5E, $96, $01                   ; hazard row, row 12 col 22: the first 1 tiles of the run at +$24
+    DB      $5F, $6C, $04                   ; hazard row ($38) x 4, row 11 col 12
+    DB      $5F, $73, $02                   ; hazard row ($38) x 2, row 11 col 19
+    DB      $5F, $90, $03                   ; hazard row ($38) x 3, row 12 col 16
+    DB      $5F, $95, $01                   ; hazard row ($38) x 1, row 12 col 21
+    DB      $5F, $E8, $02                   ; hazard row ($38) x 2, row 15 col 8
+    DB      $9F, $08, $02                   ; hazard row ($38) x 2, row 16 col 8
+    DB      $5E, $C8, $02                   ; hazard row, row 14 col 8: the first 2 tiles of the run at +$24
+    DB      $9E, $C5, $02                   ; hazard row, row 22 col 5: the first 2 tiles of the run at +$24
+    DB      $42, $DC, $31                   ; block of $08 brick, row 14 col 28, 3 wide x 1 high
+    DB      $A0, $6A                        ; jewel, row 19 col 10 (thing 0)
+    DB      $A0, $6E                        ; jewel, row 19 col 14 (thing 1)
+    DB      $62, $A5                        ; sword, row 13 col 5 (thing 2)
+    DB      $62, $CE                        ; sword, row 14 col 14 (thing 3)
+    DB      $64, $D0                        ; gold key, row 14 col 16 (thing 4)
+    DB      $65, $D2                        ; blue key, row 14 col 18 (thing 5)
+    DB      $69, $D5                        ; gold door, row 14 col 21 (thing 6)
+    DB      $8B, $6C                        ; barrier ($E0 barrier), row 19 col 12, 4 high
+    DB      $59, $3A, $0B                   ; rope column ($90), row 9 col 26, 11 high, top row $C4
+    DB      $A7, $BD                        ; creature, row 21 col 29 (thing 7)
+    DB      $31, $95                        ; roller (flags $08), x $90 y $81 (thing 8)
+    DB      $31, $F2                        ; roller (flags $08), x $F0 y $61 (thing 9)
+    DB      $31, $39                        ; roller (flags $08), x $30 y $A9 (thing 10)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $28, $FC                        ; creature, row 7 col 28 (thing 11)
+    DB      $0B, $A4                        ; barrier ($E0 barrier), row 5 col 4, 4 high
 
-LOC_A0F8:
-    LD      A, ($707A)                      ; RAM $707A
-    SLA     A                               ; SLA A: A = scroll offset * 2
-    SLA     A                               ; SLA A: A = scroll offset * 4
-    LD      C, A                            ; LD C,A: C = offset*4
-    LD      A, $80                          ; LD A,$80: A = $80 (half VRAM row width)
-    SUB     C                               ; SUB C: A = $80 - offset*4 (VRAM X position)
-    LD      H, $00                          ; LD H,$00: H = $00 (zero high byte)
-    LD      L, A                            ; LD L,A: HL = VRAM column offset
-    LD      B, $00                          ; LD B,$00: B = $00 (zero for ADD HL,BC)
-    DB      $EB                             ; DB $EB: EX DE,HL opcode (mid-routine literal byte)
-    LD      HL, $1B08                       ; LD HL,$1B08: HL = $1B08 (VRAM scroll area base)
-    ADD     HL, BC                          ; ADD HL,BC: HL = scroll area base + DE offset
-    XOR     A                               ; XOR A: A = $00 (fill byte = blank)
-    CALL    FILL_VRAM                       ; CALL FILL_VRAM: blank scroll column
-    CALL    SUB_AE83                        ; CALL SUB_AE83: VRAM-blank restore (exit lock)
-    RET                                     ; RET: return from scroll blank routine
+ROOM_LIST_06:
+    DB      $02, $BD, $14                   ; block of $08 brick, row 5 col 29, 1 wide x 4 high
+    DB      $43, $20, $20, $0F              ; block of $08 brick, row 9 col 0, 32 wide x 15 high
+    DB      $58, $2F, $0F                   ; ladder column ($88 $89), row 9 col 15, 15 high, top row $10 $11
+    DB      $27, $E6                        ; creature, row 7 col 6 (thing 0)
+    DB      $27, $F7                        ; creature, row 7 col 23 (thing 1)
+    DB      $10                             ; rest of the list only from level 2
+    DB      $25, $BB                        ; blue key, row 5 col 27 (thing 2)
+    DB      $00, $BD, $14                   ; block of $00 blank, row 5 col 29, 1 wide x 4 high
+    DB      $11                             ; rest of the list only from level 6
+    DB      $02, $BD, $14                   ; block of $08 brick, row 5 col 29, 1 wide x 4 high
 
-LOC_A115:
-    LD      HL, ($7190)                     ; RAM $7190
-    LD      A, (HL)                         ; LD A,(HL): A = raw tile byte from queue
-    LD      ($7196), A                      ; RAM $7196
-    AND     $3E                             ; AND $3E: mask to tile-type bits 1-5
-    CP      $3E                             ; CP $3E: check for queue-end sentinel ($3E)
-    JR      Z, LOC_A191                     ; JR Z,LOC_A191: end of queue -> wrap pointer
-    LD      BC, $0003                       ; LD BC,$0003: BC = 3 (copy 3 more tile bytes)
-    INC     HL                              ; INC HL: point past first queue byte
-    LD      DE, $7197                       ; RAM $7197
-    LDIR                                    ; LDIR: copy 3 bytes to $7197 tile buffer
-    CALL    SUB_A4F8                        ; CALL SUB_A4F8: look up tile action code
-    LD      A, ($7196)                      ; RAM $7196
-    AND     $3F                             ; AND $3F: mask off flag bits -> tile index
-    LD      B, $02                          ; LD B,$02: B = 2 (default tile-type param)
-    CP      $10                             ; CP $10: tile = $10 (door tile)?
-    JP      Z, LOC_A1BE                     ; JP Z,LOC_A1BE: yes -> door handler
-    CP      $11                             ; CP $11: tile = $11 (key tile)?
-    JP      Z, LOC_A1BC                     ; JP Z,LOC_A1BC: yes -> key handler
-    CP      $0B                             ; CP $0B: tile = $0B (rope tile)?
-    JP      Z, LOC_A2E3                     ; JP Z,LOC_A2E3: yes -> rope handler
-    CP      $20                             ; CP $20: tile < $20 (room object)?
-    JR      C, LOC_A175                     ; JR C,LOC_A175: yes -> place object
-    CP      $29                             ; CP $29: tile < $29 (ladder type A)?
-    JR      C, LOC_A15D                     ; JR C,LOC_A15D: yes -> ladder A handler
-    CP      $30                             ; CP $30: tile < $30 (ladder type B)?
-    JR      C, LOC_A169                     ; JR C,LOC_A169: yes -> ladder B handler
-    LD      A, ($7194)                      ; RAM $7194
-    CP      $00                             ; CP $00: pending action count = 0?
-    JR      NZ, LOC_A0D9                    ; JR NZ,LOC_A0D9: pending -> skip sound
-    CALL    SOUND_WRITE_A405                ; CALL SOUND_WRITE_A405: play tile-exit sound
+ROOM_LIST_07:
+    DB      $08, $0F, $0B                   ; ladder column ($88 $89), row 0 col 15, 11 high
+    DB      $42, $20, $4F                   ; block of $08 brick, row 9 col 0, 4 wide x 15 high
+    DB      $55, $24, $07                   ; slope, row 9 col 4: $08 brick 7 wide x 14 high, then 6 steps of $00 blank 2 high, right-aligned
+    DB      $56, $35, $07                   ; slope, row 9 col 21: $08 brick 7 wide x 14 high, then 6 steps of $00 blank 2 high, left-aligned
+    DB      $42, $3C, $4F                   ; block of $08 brick, row 9 col 28, 4 wide x 15 high
+    DB      $57, $29, $04                   ; slope, row 9 col 9: $00 blank 4 wide x 8 high, then 3 steps of $08 brick 2 high, right-aligned
+    DB      $42, $CD, $63                   ; block of $08 brick, row 14 col 13, 6 wide x 3 high
+    DB      $54, $33, $04                   ; slope, row 9 col 19: $00 blank 4 wide x 8 high, then 3 steps of $08 brick 2 high, left-aligned
+    DB      $02, $BE, $14                   ; block of $08 brick, row 5 col 30, 1 wide x 4 high
+    DB      $83, $E0, $1E, $01              ; block of $08 brick, row 23 col 0, 30 wide x 1 high
+    DB      $9E, $CB, $0A                   ; hazard row, row 22 col 11: the first 10 tiles of the run at +$24
+    DB      $9F, $EB, $0A                   ; hazard row ($38) x 10, row 23 col 11
+    DB      $82, $AE, $43                   ; block of $08 brick, row 21 col 14, 4 wide x 3 high
+    DB      $5E, $AD, $06                   ; hazard row, row 13 col 13: the first 6 tiles of the run at +$24
+    DB      $5F, $CD, $06                   ; hazard row ($38) x 6, row 14 col 13
+    DB      $42, $6F, $25                   ; block of $08 brick, row 11 col 15, 2 wide x 5 high
+    DB      $80, $59, $44                   ; block of $00 blank, row 18 col 25, 4 wide x 4 high
+    DB      $58, $3C, $0D                   ; ladder column ($88 $89), row 9 col 28, 13 high, top row $10 $11
+    DB      $A5, $59                        ; blue key, row 18 col 25 (thing 0)
+    DB      $A6, $2F                        ; red key, row 17 col 15 (thing 1)
+    DB      $10                             ; rest of the list only from level 2
+    DB      $80, $59, $22                   ; block of $00 blank, row 18 col 25, 2 wide x 2 high
+    DB      $98, $AF, $03                   ; ladder column ($88 $89), row 21 col 15, 3 high, top row $10 $11
+    DB      $A6, $59                        ; red key, row 18 col 25 (thing 2)
+    DB      $20, $A4                        ; jewel, row 5 col 4 (thing 3)
+    DB      $00, $BE, $14                   ; block of $00 blank, row 5 col 30, 1 wide x 4 high
+    DB      $02, $A2, $14                   ; block of $08 brick, row 5 col 2, 1 wide x 4 high
+    DB      $50                             ; rest of the list only from level 3
+    DB      $00, $A2, $14                   ; block of $00 blank, row 5 col 2, 1 wide x 4 high
+    DB      $90                             ; rest of the list only from level 4
+    DB      $0B, $BB                        ; barrier ($E0 barrier), row 5 col 27, 4 high
 
-LOC_A15A:
-    JP      LOC_A0D9                        ; JP LOC_A0D9: advance entity queue pointer
+ROOM_LIST_08:
+    DB      $3E, $06                        ; draw room 6's shapes first
+    DB      $30, $20                        ; climber (flags $48), x $20 y $37 (thing 0)
+    DB      $30, $D0                        ; climber (flags $48), x $D0 y $37 (thing 1)
+    DB      $10                             ; rest of the list only from level 2
+    DB      $02, $BD, $14                   ; block of $08 brick, row 5 col 29, 1 wide x 4 high
 
-LOC_A15D:
-    LD      A, ($7194)                      ; RAM $7194
-    CP      $00                             ; CP $00: pending action count = 0?
-    JR      NZ, LOC_A15A                    ; JR NZ,LOC_A15A: pending -> skip ladder A
-    CALL    SUB_A36A                        ; CALL SUB_A36A: process ladder A action
-    JR      LOC_A15A                        ; JR LOC_A15A: advance queue pointer
+ROOM_LIST_09:
+    DB      $43, $27, $19, $09              ; block of $08 brick, row 9 col 7, 25 wide x 9 high
+    DB      $47, $47, $08                   ; slope, row 10 col 7: $00 blank 8 wide x 8 high, then 7 steps of $08 brick 1 high, right-aligned
+    DB      $82, $32, $E6                   ; block of $08 brick, row 17 col 18, 14 wide x 6 high
+    DB      $83, $C0, $20, $02              ; block of $08 brick, row 22 col 0, 32 wide x 2 high
+    DB      $03, $80, $01, $12              ; block of $08 brick, row 4 col 0, 1 wide x 18 high
+    DB      $59, $23, $0C                   ; rope column ($90), row 9 col 3, 12 high, top row $C4
+    DB      $26, $AC                        ; red key, row 5 col 12 (thing 0)
+    DB      $2A, $A9                        ; blue door, row 5 col 9 (thing 1)
+    DB      $2A, $B1                        ; blue door, row 5 col 17 (thing 2)
+    DB      $29, $B8                        ; gold door, row 5 col 24 (thing 3)
+    DB      $29, $BB                        ; gold door, row 5 col 27 (thing 4)
+    DB      $82, $CE, $41                   ; block of $08 brick, row 22 col 14, 4 wide x 1 high
+    DB      $98, $CF, $02                   ; ladder column ($88 $89), row 22 col 15, 2 high, top row $10 $11
+    DB      $10                             ; rest of the list only from level 2
+    DB      $00, $AC, $22                   ; block of $00 blank, row 5 col 12, 2 wide x 2 high
+    DB      $26, $A6                        ; red key, row 5 col 6 (thing 5)
+    DB      $82, $CF, $22                   ; block of $08 brick, row 22 col 15, 2 wide x 2 high
+    DB      $50                             ; rest of the list only from level 3
+    DB      $98, $CF, $02                   ; ladder column ($88 $89), row 22 col 15, 2 high, top row $10 $11
 
-LOC_A169:
-    LD      A, ($7194)                      ; RAM $7194
-    CP      $00                             ; CP $00: pending action count = 0?
-    JR      NZ, LOC_A15A                    ; JR NZ,LOC_A15A: pending -> skip ladder B
-    CALL    SUB_A3AB                        ; CALL SUB_A3AB: process ladder B action
-    JR      LOC_A15A                        ; JR LOC_A15A: advance queue pointer
+ROOM_LIST_10:
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $43, $20, $20, $0F              ; block of $08 brick, row 9 col 0, 32 wide x 15 high
+    DB      $0B, $B7                        ; barrier ($E0 barrier), row 5 col 23, 4 high
+    DB      $22, $B1                        ; sword, row 5 col 17 (thing 0)
+    DB      $71, $30                        ; roller (flags $08), x $30 y $39, fast (thing 1)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $0B, $A7                        ; barrier ($E0 barrier), row 5 col 7, 4 high
 
-LOC_A175:
-    LD      HL, $A20A                       ; LD HL,$A20A: HL = object dispatch table
-    LD      A, ($7196)                      ; RAM $7196
-    SRL     A                               ; SRL A: shift tile index right
-    SRL     A                               ; SRL A: shift right again
-    AND     $07                             ; AND $07: keep bits 2-4 (object index 0-7)
-    SLA     A                               ; SLA A: *2 for word-table index
-    LD      B, $00                          ; LD B,$00: B = $00 (zero extend)
-    LD      C, A                            ; LD C,A: C = object index
-    ADD     HL, BC                          ; ADD HL,BC: HL = table entry address
-    LD      E, (HL)                         ; LD E,(HL): E = lo byte of object handler addr
-    INC     HL                              ; INC HL: advance to hi byte
-    LD      D, (HL)                         ; LD D,(HL): D = hi byte of handler address
-    DB      $EB                             ; DB $EB: EX DE,HL opcode (mid-routine literal byte)
-    CALL    SUB_AE3A                        ; CALL SUB_AE3A: call object handler via DE
-    JP      LOC_A0DB                        ; JP LOC_A0DB: advance entity queue pointer
+ROOM_LIST_11:
+    DB      $43, $20, $20, $0F              ; block of $08 brick, row 9 col 0, 32 wide x 15 high
+    DB      $28, $F5                        ; creature, row 7 col 21 (thing 0)
+    DB      $20, $B9                        ; jewel, row 5 col 25 (thing 1)
+    DB      $20, $A6                        ; jewel, row 5 col 6 (thing 2)
+    DB      $32, $30                        ; bouncer (flags $10), x $30 y $39 (thing 3)
 
-LOC_A191:
-    LD      B, $04                          ; LD B,$04: B = 4 (push 4 queue entries)
-    LD      HL, $7190                       ; RAM $7190
+ROOM_LIST_12:
+    DB      $8D, $E6, $14                   ; conveyor (pushes right) row, row 23 col 6, 20 wide: $B8, $B9s, $BA
+    DB      $4E, $95, $04                   ; conveyor (pushes left) row, row 12 col 21, 4 wide: $04, $05s, $06
+    DB      $8D, $33, $04                   ; conveyor (pushes right) row, row 17 col 19, 4 wide: $B8, $B9s, $BA
+    DB      $4D, $DA, $06                   ; conveyor (pushes right) row, row 14 col 26, 6 wide: $B8, $B9s, $BA
+    DB      $4E, $F1, $07                   ; conveyor (pushes left) row, row 15 col 17, 7 wide: $04, $05s, $06
+    DB      $8E, $75, $04                   ; conveyor (pushes left) row, row 19 col 21, 4 wide: $04, $05s, $06
+    DB      $00, $4C, $84                   ; block of $00 blank, row 2 col 12, 8 wide x 4 high
+    DB      $08, $0F, $06                   ; ladder column ($88 $89), row 0 col 15, 6 high
+    DB      $44, $20, $05                   ; slope, row 9 col 0: $00 blank 5 wide x 5 high, then 4 steps of $08 brick 1 high, left-aligned
+    DB      $42, $A0, $1B                   ; block of $08 brick, row 13 col 0, 1 wide x 11 high
+    DB      $82, $E1, $61                   ; block of $08 brick, row 23 col 1, 6 wide x 1 high
+    DB      $82, $F9, $61                   ; block of $08 brick, row 23 col 25, 6 wide x 1 high
+    DB      $07, $FC, $04                   ; slope, row 7 col 28: $00 blank 4 wide x 4 high, then 3 steps of $08 brick 1 high, right-aligned
+    DB      $03, $CD, $13, $01              ; block of $08 brick, row 6 col 13, 19 wide x 1 high
+    DB      $02, $ED, $16                   ; block of $08 brick, row 7 col 13, 1 wide x 6 high
+    DB      $42, $6E, $51                   ; block of $08 brick, row 11 col 14, 5 wide x 1 high
+    DB      $42, $90, $17                   ; block of $08 brick, row 12 col 16, 1 wide x 7 high
+    DB      $82, $4D, $31                   ; block of $08 brick, row 18 col 13, 3 wide x 1 high
+    DB      $42, $FB, $41                   ; block of $08 brick, row 15 col 27, 4 wide x 1 high
+    DB      $02, $A9, $1C                   ; block of $08 brick, row 5 col 9, 1 wide x 12 high
+    DB      $82, $06, $32                   ; block of $08 brick, row 16 col 6, 3 wide x 2 high
+    DB      $82, $25, $41                   ; block of $08 brick, row 17 col 5, 4 wide x 1 high
+    DB      $02, $B4, $C2                   ; block of $08 brick, row 5 col 20, 12 wide x 2 high
+    DB      $4A, $62, $0C                   ; pole column ($95), row 11 col 2, 12 high
+    DB      $0A, $A7, $0B                   ; pole column ($95), row 5 col 7, 11 high
+    DB      $58, $6E, $07                   ; ladder column ($88 $89), row 11 col 14, 7 high, top row $10 $11
+    DB      $98, $7C, $04                   ; ladder column ($88 $89), row 19 col 28, 4 high, top row $10 $11
+    DB      $59, $0B, $09                   ; rope column ($90), row 8 col 11, 9 high, top row $C4
+    DB      $0B, $F2                        ; barrier ($E0 barrier), row 7 col 18, 4 high
+    DB      $8B, $1B                        ; barrier ($E0 barrier), row 16 col 27, 4 high
+    DB      $82, $7B, $41                   ; block of $08 brick, row 19 col 27, 4 wide x 1 high
+    DB      $42, $5F, $1E                   ; block of $08 brick, row 10 col 31, 1 wide x 14 high
+    DB      $24, $4D                        ; gold key, row 2 col 13 (thing 0)
+    DB      $64, $15                        ; gold key, row 8 col 21 (thing 1)
+    DB      $71, $34                        ; roller (flags $08), x $30 y $71, fast (thing 2)
+    DB      $71, $29                        ; roller (flags $08), x $20 y $A9, fast (thing 3)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $31, $93                        ; roller (flags $08), x $90 y $69 (thing 4)
 
-LOC_A196:
-    LD      A, (HL)                         ; LD A,(HL): A = queue byte
-    INC     HL                              ; INC HL: advance queue pointer
-    PUSH    AF                              ; PUSH AF: save queue byte on stack
-    DJNZ    LOC_A196                        ; DJNZ LOC_A196: loop to push 4 bytes
-    LD      A, ($7195)                      ; RAM $7195
-    PUSH    AF                              ; PUSH AF: push $7195 tile-direction byte
-    LD      HL, ($7190)                     ; RAM $7190
-    LD      B, $00                          ; LD B,$00: B = $00 (zero extend offset)
-    LD      C, A                            ; LD C,A: C = $7195 offset
-    ADD     HL, BC                          ; ADD HL,BC: HL = queue base + offset
-    INC     HL                              ; INC HL: skip to data byte
-    LD      A, (HL)                         ; LD A,(HL): A = new queue data byte
-    PUSH    AF                              ; PUSH AF: save new data byte
-    LD      A, ($7196)                      ; RAM $7196
-    AND     $01                             ; AND $01: keep bit 0 -> new direction flag
-    LD      ($7195), A                      ; RAM $7195
-    LD      HL, $7194                       ; RAM $7194
-    INC     (HL)                            ; INC (HL): increment pending action count
-    POP     AF                              ; POP AF: restore data byte
-    CALL    SUB_A4CE                        ; CALL SUB_A4CE: set up speed record
-    JP      LOC_A0A4                        ; JP LOC_A0A4: return to main NMI loop
+ROOM_LIST_13:
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $02, $A0, $55                   ; block of $08 brick, row 5 col 0, 5 wide x 5 high
+    DB      $02, $BB, $55                   ; block of $08 brick, row 5 col 27, 5 wide x 5 high
+    DB      $04, $A5, $03                   ; slope, row 5 col 5: $00 blank 3 wide x 3 high, then 2 steps of $08 brick 1 high, left-aligned
+    DB      $07, $B8, $03                   ; slope, row 5 col 24: $00 blank 3 wide x 3 high, then 2 steps of $08 brick 1 high, right-aligned
+    DB      $43, $20, $20, $0F              ; block of $08 brick, row 9 col 0, 32 wide x 15 high
+    DB      $58, $2F, $0F                   ; ladder column ($88 $89), row 9 col 15, 15 high, top row $10 $11
+    DB      $20, $A9                        ; jewel, row 5 col 9 (thing 0)
+    DB      $20, $B6                        ; jewel, row 5 col 22 (thing 1)
+    DB      $71, $60                        ; roller (flags $08), x $60 y $39, fast (thing 2)
 
-LOC_A1BC:
-    LD      B, $06                          ; LD B,$06: B = 6 (key tile param)
+ROOM_LIST_14:
+    DB      $02, $A0, $71                   ; block of $08 brick, row 5 col 0, 7 wide x 1 high
+    DB      $02, $C0, $41                   ; block of $08 brick, row 6 col 0, 4 wide x 1 high
+    DB      $02, $E0, $2A                   ; block of $08 brick, row 7 col 0, 2 wide x 10 high
+    DB      $45, $82, $02                   ; slope, row 12 col 2: $08 brick 2 wide x 2 high, then 1 steps of $00 blank 1 high, right-aligned
+    DB      $43, $C0, $19, $01              ; block of $08 brick, row 14 col 0, 25 wide x 1 high
+    DB      $44, $E2, $02                   ; slope, row 15 col 2: $00 blank 2 wide x 2 high, then 1 steps of $08 brick 1 high, left-aligned
+    DB      $82, $01, $11                   ; block of $08 brick, row 16 col 1, 1 wide x 1 high
+    DB      $82, $20, $13                   ; block of $08 brick, row 17 col 0, 1 wide x 3 high
+    DB      $83, $80, $20, $04              ; block of $08 brick, row 20 col 0, 32 wide x 4 high
+    DB      $43, $2A, $16, $01              ; block of $08 brick, row 9 col 10, 22 wide x 1 high
+    DB      $47, $5B, $02                   ; slope, row 10 col 27: $00 blank 2 wide x 2 high, then 1 steps of $08 brick 1 high, right-aligned
+    DB      $42, $5D, $39                   ; block of $08 brick, row 10 col 29, 3 wide x 9 high
+    DB      $82, $7C, $41                   ; block of $08 brick, row 19 col 28, 4 wide x 1 high
+    DB      $58, $2C, $05                   ; ladder column ($88 $89), row 9 col 12, 5 high, top row $10 $11
+    DB      $58, $D6, $06                   ; ladder column ($88 $89), row 14 col 22, 6 high, top row $10 $11
+    DB      $98, $8F, $04                   ; ladder column ($88 $89), row 20 col 15, 4 high, top row $10 $11
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $90                             ; rest of the list only from level 4
+    DB      $30, $42                        ; climber (flags $48), x $40 y $5F (thing 0)
 
-LOC_A1BE:
-    LD      A, ($7196)                      ; RAM $7196
-    AND     $C0                             ; AND $C0: keep bits 6-7 (target level)
-    SRL     A                               ; SRL A: shift right
-    SRL     A                               ; SRL A: shift right
-    SRL     A                               ; SRL A: shift right
-    SRL     A                               ; SRL A: shift right
-    SRL     A                               ; SRL A: shift right
-    SRL     A                               ; SRL A: A = target level 0-3
-    ADD     A, B                            ; ADD A,B: A = target level + param
-    LD      B, A                            ; LD B,A: B = final level target
-    LD      A, ($71A6)                      ; RAM $71A6
-    CP      B                               ; CP B: current level >= target level?
-    JR      C, LOC_A1DC                     ; JR C,LOC_A1DC: level < target -> dispatch
-    LD      A, $01                          ; LD A,$01: A = 1 (step size = 1)
-    JP      LOC_A0DB                        ; JP LOC_A0DB: advance queue 1 byte
+ROOM_LIST_15:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $02, $BE, $14                   ; block of $08 brick, row 5 col 30, 1 wide x 4 high
+    DB      $58, $2F, $0F                   ; ladder column ($88 $89), row 9 col 15, 15 high, top row $10 $11
+    DB      $30, $20                        ; climber (flags $48), x $20 y $37 (thing 0)
+    DB      $30, $30                        ; climber (flags $48), x $30 y $37 (thing 1)
 
-LOC_A1DC:
-    JP      LOC_A0B6                        ; JP LOC_A0B6: dispatch to LOC_A0B6
+ROOM_LIST_16:
+    DB      $04, $A0, $05                   ; slope, row 5 col 0: $00 blank 5 wide x 5 high, then 4 steps of $08 brick 1 high, left-aligned
+    DB      $42, $20, $1D                   ; block of $08 brick, row 9 col 0, 1 wide x 13 high
+    DB      $42, $C1, $21                   ; block of $08 brick, row 14 col 1, 2 wide x 1 high
+    DB      $83, $C0, $20, $02              ; block of $08 brick, row 22 col 0, 32 wide x 2 high
+    DB      $82, $77, $13                   ; block of $08 brick, row 19 col 23, 1 wide x 3 high
+    DB      $82, $9A, $12                   ; block of $08 brick, row 20 col 26, 1 wide x 2 high
+    DB      $82, $9D, $32                   ; block of $08 brick, row 20 col 29, 3 wide x 2 high
+    DB      $42, $3F, $1B                   ; block of $08 brick, row 9 col 31, 1 wide x 11 high
+    DB      $44, $4A, $02                   ; slope, row 10 col 10: $00 blank 2 wide x 2 high, then 1 steps of $08 brick 1 high, left-aligned
+    DB      $46, $68, $02                   ; slope, row 11 col 8: $08 brick 2 wide x 2 high, then 1 steps of $00 blank 1 high, left-aligned
+    DB      $42, $8C, $36                   ; block of $08 brick, row 12 col 12, 3 wide x 6 high
+    DB      $42, $C1, $21                   ; block of $08 brick, row 14 col 1, 2 wide x 1 high
+    DB      $45, $C3, $02                   ; slope, row 14 col 3: $08 brick 2 wide x 2 high, then 1 steps of $00 blank 1 high, right-aligned
+    DB      $87, $04, $02                   ; slope, row 16 col 4: $00 blank 2 wide x 2 high, then 1 steps of $08 brick 1 high, right-aligned
+    DB      $82, $26, $81                   ; block of $08 brick, row 17 col 6, 8 wide x 1 high
+    DB      $42, $4E, $14                   ; block of $08 brick, row 10 col 14, 1 wide x 4 high
+    DB      $42, $4A, $22                   ; block of $08 brick, row 10 col 10, 2 wide x 2 high
+    DB      $42, $CF, $81                   ; block of $08 brick, row 14 col 15, 8 wide x 1 high
+    DB      $47, $3C, $03                   ; slope, row 9 col 28: $00 blank 3 wide x 3 high, then 2 steps of $08 brick 1 high, right-aligned
+    DB      $4E, $35, $08                   ; conveyor (pushes left) row, row 9 col 21, 8 wide: $04, $05s, $06
+    DB      $42, $2B, $B1                   ; block of $08 brick, row 9 col 11, 11 wide x 1 high
+    DB      $58, $32, $05                   ; ladder column ($88 $89), row 9 col 18, 5 high, top row $10 $11
+    DB      $58, $C1, $06                   ; ladder column ($88 $89), row 14 col 1, 6 high, top row $10 $11
+    DB      $5E, $8C, $02                   ; hazard row, row 12 col 12: the first 2 tiles of the run at +$24
+    DB      $5E, $AB, $01                   ; hazard row, row 13 col 11: the first 1 tiles of the run at +$24
+    DB      $5E, $C4, $07                   ; hazard row, row 14 col 4: the first 7 tiles of the run at +$24
+    DB      $5F, $AC, $02                   ; hazard row ($38) x 2, row 13 col 12
+    DB      $5F, $CB, $03                   ; hazard row ($38) x 3, row 14 col 11
+    DB      $5F, $E5, $08                   ; hazard row ($38) x 8, row 15 col 5
+    DB      $9F, $06, $06                   ; hazard row ($38) x 6, row 16 col 6
+    DB      $98, $CF, $02                   ; ladder column ($88 $89), row 22 col 15, 2 high, top row $10 $11
+    DB      $8D, $91, $03                   ; conveyor (pushes right) row, row 20 col 17, 3 wide: $B8, $B9s, $BA
+    DB      $9F, $D5, $02                   ; hazard row ($38) x 2, row 22 col 21
+    DB      $9F, $D8, $02                   ; hazard row ($38) x 2, row 22 col 24
+    DB      $9F, $BB, $02                   ; hazard row ($38) x 2, row 21 col 27
+    DB      $9E, $B5, $02                   ; hazard row, row 21 col 21: the first 2 tiles of the run at +$24
+    DB      $9E, $B8, $02                   ; hazard row, row 21 col 24: the first 2 tiles of the run at +$24
+    DB      $9E, $9B, $02                   ; hazard row, row 20 col 27: the first 2 tiles of the run at +$24
+    DB      $9C, $98, $02                   ; vanishing floor row ($E8) x 2, row 20 col 24
+    DB      $59, $FB, $03                   ; rope column ($90), row 15 col 27, 3 high, top row $C4
+    DB      $59, $B9, $03                   ; rope column ($90), row 13 col 25, 3 high, top row $C4
+    DB      $31, $80                        ; roller (flags $08), x $80 y $39 (thing 0)
+    DB      $31, $82                        ; roller (flags $08), x $80 y $61 (thing 1)
+    DB      $31, $28                        ; roller (flags $08), x $20 y $A1 (thing 2)
+    DB      $60, $59                        ; jewel, row 10 col 25 (thing 3)
+    DB      $60, $9B                        ; jewel, row 12 col 27 (thing 4)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $02, $AE, $14                   ; block of $08 brick, row 5 col 14, 1 wide x 4 high
 
-SUB_A1DF:
-    LD      B, $03                          ; LD B,$03: B = 3 (rope tile count)
-    LD      DE, $0003                       ; LD DE,$0003: DE = 3 (stride between entries)
-    LD      HL, $18A0                       ; LD HL,$18A0: HL = $18A0 (VRAM rope row)
-    LD      DE, $0260                       ; LD DE,$0260: DE = $0260 (VRAM block length)
-    XOR     A                               ; XOR A: A = $00 (fill value blank)
-    CALL    FILL_VRAM                       ; CALL FILL_VRAM: clear rope VRAM area
-    LD      A, ($705F)                      ; RAM $705F
-    BIT     2, A                            ; BIT 2,A: check tile-data-ready flag
-    JR      Z, LOC_A1FB                     ; JR Z,LOC_A1FB: not ready -> skip detail
-    LD      A, ($71A8)                      ; RAM $71A8
-    CP      $0A                             ; CP $0A: animation frame = 10?
-    RET     NZ                              ; RET NZ: not frame 10 -> return early
+ROOM_LIST_17:
+    DB      $3E, $07                        ; draw room 7's shapes first
+    DB      $A0, $2F                        ; jewel, row 17 col 15 (thing 0)
+    DB      $A0, $59                        ; jewel, row 18 col 25 (thing 1)
+    DB      $00, $BE, $14                   ; block of $00 blank, row 5 col 30, 1 wide x 4 high
+    DB      $00, $A2, $14                   ; block of $00 blank, row 5 col 2, 1 wide x 4 high
+    DB      $10                             ; rest of the list only from level 2
+    DB      $82, $AF, $23                   ; block of $08 brick, row 21 col 15, 2 wide x 3 high
+    DB      $90                             ; rest of the list only from level 4
+    DB      $0B, $BB                        ; barrier ($E0 barrier), row 5 col 27, 4 high
 
-LOC_A1FB:
-    LD      HL, $1800                       ; LD HL,$1800: HL = $1800 (name table base)
-    LD      DE, $00A0                       ; LD DE,$00A0: DE = $00A0 (160 bytes)
-    LD      A, $08                          ; LD A,$08: A = $08 (fill tile = space)
-    CALL    FILL_VRAM                       ; CALL FILL_VRAM: clear top name table rows
-    CALL    SUB_AA5D                        ; CALL SUB_AA5D: redraw room header
-    RET                                     ; RET: return from SUB_A1DF
-    DB      $1A, $A2, $7C, $A2, $F0, $A2, $18, $A3 ; rope tile handler: jump table entries (lo/hi pairs)
-    DB      $1A, $A2, $7C, $A2, $0E, $A3, $40, $A3 ; rope tile handler: jump table entries continued
-    DB      $CD, $E3, $A4, $3A, $9A, $71, $21, $D2 ; rope tile handler: inline Z80 CALL $A4E3 / LD A ...
-    DB      $9F, $06, $00, $4F, $09, $7E, $32, $9B ; rope tile handler: inline Z80 LD HL,$9FD2 ...
-    DB      $71, $3A, $96, $71, $E6, $01, $FE, $00 ; rope tile handler: inline Z80 continued
-    DB      $28, $0D, $21, $98, $71, $56, $23, $5E ; rope tile handler: inline Z80 LD A,($7096) ...
-    DB      $3E, $04, $32, $A0, $71, $18, $16, $3A ; rope tile handler: inline Z80 LD D,(HL) / INC HL ...
-    DB      $98, $71, $5F, $CB, $3F, $CB, $3F, $CB ; rope tile handler: inline Z80 CALL $AEA7 (x2) ...
-    DB      $3F, $CB, $3F, $57, $7B, $E6, $0F, $5F ; rope tile handler: inline Z80 LD HL,($9B) ...
-    DB      $3E, $03, $32, $A0, $71, $21, $9D, $71 ; rope tile handler: inline Z80 CALL $AEA7 / CALL $A509
-    DB      $72, $23, $73, $3A, $9E, $71, $47, $C5 ; rope tile handler: inline Z80 LD A,$10 / DJNZ ...
-    DB      $3A, $9D, $71, $47, $0E, $01, $ED, $5B ; rope tile handler: inline Z80 CALL $A4E3 / LD A ...
-    DB      $B0, $71, $21, $9B, $71, $CD, $A7, $AE ; rope tile handler: inline Z80 LD HL,$9FD2 ...
-    DB      $CD, $09, $A5, $C1, $3A, $A0, $71, $10 ; rope tile handler: inline Z80 AND $10 / CP $00 ...
-    DB      $E6, $C9, $CD, $E3, $A4, $3A, $9A, $71 ; rope tile handler: inline Z80 CALL $A257 / CALL $A4E3
-    DB      $21, $D4, $9F, $06, $00, $4F, $09, $7E ; rope tile handler: inline Z80 CALL $A4E3 / LD A ...
-    DB      $32, $9B, $71, $3A, $98, $71, $57, $5F ; rope tile handler: inline Z80 CALL $A4E3 / LD A ...
-    DB      $3A, $96, $71, $E6, $10, $FE, $00, $28 ; rope tile handler: inline Z80 DEC (HL) / JR Z ...
-    DB      $02, $CB, $23, $CD, $57, $A2, $CD, $E3 ; rope tile handler: inline Z80 RLCA (x4) / INC A ...
-    DB      $A4, $3A, $9A, $71, $21, $D2, $9F, $06 ; rope tile handler: inline Z80 CALL $A257 / CALL $A5D5
-    DB      $00, $4F, $09, $7E, $32, $9B, $71, $CD ; rope tile handler: inline Z80 DJNZ ...
-    DB      $D5, $A2, $21, $98, $71, $35, $28, $18 ; rope tile handler: inline Z80 LD A,$03 / RET ...
-    DB      $56, $3A, $96, $71, $E6, $10, $CB, $3F ; rope tile handler: inline Z80 AND $01 / RET Z ...
-    DB      $CB, $3F, $CB, $3F, $CB, $3F, $3C, $5F ; rope tile handler: inline Z80 INC HL ($70B0) ...
-    DB      $CD, $57, $A2, $CD, $D5, $A2, $18, $E2 ; rope tile handler: tail RET $C9
-    DB      $3E, $03, $C9, $3A, $96, $71, $E6, $01 ; rope tile handler: inline Z80 tail continued
-    DB      $C8, $2A, $B0, $71, $23, $22, $B0, $71 ; rope tile handler: inline Z80 continued
-    DB      $C9                             ; rope tile handler: end of rope handler data
+ROOM_LIST_18:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $71, $80                        ; roller (flags $08), x $80 y $39, fast (thing 0)
 
-LOC_A2E3:
-    LD      A, $04                          ; LD A,$04: A = $04 (rope action code)
-    LD      ($7198), A                      ; RAM $7198
-    CALL    SUB_A2F0                        ; CALL SUB_A2F0: decode rope tile params
-    LD      A, $02                          ; LD A,$02: A = $02 (advance step = 2)
-    JP      LOC_A0DB                        ; JP LOC_A0DB: advance entity queue by 2
+ROOM_LIST_19:
+    DB      $5F, $A0, $60                   ; hazard row ($38) x 96, row 13 col 0
+    DB      $9F, $00, $C0                   ; hazard row ($38) x 192, row 16 col 0
+    DB      $42, $20, $61                   ; block of $08 brick, row 9 col 0, 6 wide x 1 high
+    DB      $42, $40, $36                   ; block of $08 brick, row 10 col 0, 3 wide x 6 high
+    DB      $82, $00, $52                   ; block of $08 brick, row 16 col 0, 5 wide x 2 high
+    DB      $82, $40, $81                   ; block of $08 brick, row 18 col 0, 8 wide x 1 high
+    DB      $82, $60, $B1                   ; block of $08 brick, row 19 col 0, 11 wide x 1 high
+    DB      $82, $80, $D1                   ; block of $08 brick, row 20 col 0, 13 wide x 1 high
+    DB      $82, $A0, $F1                   ; block of $08 brick, row 21 col 0, 15 wide x 1 high
+    DB      $82, $B1, $F1                   ; block of $08 brick, row 21 col 17, 15 wide x 1 high
+    DB      $82, $93, $D1                   ; block of $08 brick, row 20 col 19, 13 wide x 1 high
+    DB      $82, $75, $B1                   ; block of $08 brick, row 19 col 21, 11 wide x 1 high
+    DB      $82, $58, $81                   ; block of $08 brick, row 18 col 24, 8 wide x 1 high
+    DB      $82, $1B, $52                   ; block of $08 brick, row 16 col 27, 5 wide x 2 high
+    DB      $42, $5D, $36                   ; block of $08 brick, row 10 col 29, 3 wide x 6 high
+    DB      $42, $3A, $61                   ; block of $08 brick, row 9 col 26, 6 wide x 1 high
+    DB      $83, $C0, $20, $02              ; block of $08 brick, row 22 col 0, 32 wide x 2 high
+    DB      $42, $CF, $51                   ; block of $08 brick, row 14 col 15, 5 wide x 1 high
+    DB      $42, $F1, $11                   ; block of $08 brick, row 15 col 17, 1 wide x 1 high
+    DB      $82, $0C, $31                   ; block of $08 brick, row 16 col 12, 3 wide x 1 high
+    DB      $82, $13, $21                   ; block of $08 brick, row 16 col 19, 2 wide x 1 high
+    DB      $82, $4D, $31                   ; block of $08 brick, row 18 col 13, 3 wide x 1 high
+    DB      $82, $51, $21                   ; block of $08 brick, row 18 col 17, 2 wide x 1 high
+    DB      $82, $8F, $11                   ; block of $08 brick, row 20 col 15, 1 wide x 1 high
+    DB      $5E, $83, $1A                   ; hazard row, row 12 col 3: the first 26 tiles of the run at +$24
+    DB      $5C, $26, $14                   ; vanishing floor row ($E8) x 20, row 9 col 6
+    DB      $27, $E4                        ; creature, row 7 col 4 (thing 0)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $28, $FA                        ; creature, row 7 col 26 (thing 1)
 
-SUB_A2F0:
-    CALL    SUB_A4E3                        ; CALL SUB_A4E3: decode tile type to $71B0
-    LD      A, ($719A)                      ; RAM $719A
-    LD      HL, $9FD1                       ; LD HL,$9FD1: HL = $9FD1 (tile coord table)
-    LD      B, $00                          ; LD B,$00: B = $00 (zero extend)
-    LD      C, A                            ; LD C,A: C = tile action index
-    ADD     HL, BC                          ; ADD HL,BC: HL = coord table entry
-    LD      A, (HL)                         ; LD A,(HL): A = lo coord byte
-    LD      C, A                            ; LD C,A: C = lo coord byte
-    INC     HL                              ; INC HL: advance to hi coord byte
-    LD      A, ($7198)                      ; RAM $7198
-    LD      B, A                            ; LD B,A: B = $7198 count byte
+ROOM_LIST_20:
+    DB      $3E, $0F                        ; draw room 15's shapes first
+    DB      $31, $A0                        ; roller (flags $08), x $A0 y $39 (thing 0)
+    DB      $24, $A5                        ; gold key, row 5 col 5 (thing 1)
+    DB      $21, $A7                        ; amulet, row 5 col 7 (thing 2)
+    DB      $0B, $AB                        ; barrier ($E0 barrier), row 5 col 11, 4 high
+    DB      $20, $B0                        ; jewel, row 5 col 16 (thing 3)
+    DB      $58, $2F, $0F                   ; ladder column ($88 $89), row 9 col 15, 15 high, top row $10 $11
 
-SUB_A304:
-    LD      DE, ($71B0)                     ; RAM $71B0
+ROOM_LIST_21:
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $03, $A0, $01, $13              ; block of $08 brick, row 5 col 0, 1 wide x 19 high
+    DB      $42, $21, $21                   ; block of $08 brick, row 9 col 1, 2 wide x 1 high
+    DB      $42, $C1, $21                   ; block of $08 brick, row 14 col 1, 2 wide x 1 high
+    DB      $82, $61, $21                   ; block of $08 brick, row 19 col 1, 2 wide x 1 high
+    DB      $82, $81, $14                   ; block of $08 brick, row 20 col 1, 1 wide x 4 high
+    DB      $82, $C2, $22                   ; block of $08 brick, row 22 col 2, 2 wide x 2 high
+    DB      $83, $E4, $1C, $01              ; block of $08 brick, row 23 col 4, 28 wide x 1 high
+    DB      $82, $DC, $41                   ; block of $08 brick, row 22 col 28, 4 wide x 1 high
+    DB      $82, $9E, $22                   ; block of $08 brick, row 20 col 30, 2 wide x 2 high
+    DB      $82, $7D, $31                   ; block of $08 brick, row 19 col 29, 3 wide x 1 high
+    DB      $02, $BF, $1E                   ; block of $08 brick, row 5 col 31, 1 wide x 14 high
+    DB      $00, $BF, $14                   ; block of $00 blank, row 5 col 31, 1 wide x 4 high
+    DB      $42, $3D, $21                   ; block of $08 brick, row 9 col 29, 2 wide x 1 high
+    DB      $42, $DD, $21                   ; block of $08 brick, row 14 col 29, 2 wide x 1 high
+    DB      $4E, $23, $05                   ; conveyor (pushes left) row, row 9 col 3, 5 wide: $04, $05s, $06
+    DB      $4E, $C3, $05                   ; conveyor (pushes left) row, row 14 col 3, 5 wide: $04, $05s, $06
+    DB      $8E, $63, $05                   ; conveyor (pushes left) row, row 19 col 3, 5 wide: $04, $05s, $06
+    DB      $4D, $2A, $05                   ; conveyor (pushes right) row, row 9 col 10, 5 wide: $B8, $B9s, $BA
+    DB      $4D, $CA, $05                   ; conveyor (pushes right) row, row 14 col 10, 5 wide: $B8, $B9s, $BA
+    DB      $8D, $6A, $05                   ; conveyor (pushes right) row, row 19 col 10, 5 wide: $B8, $B9s, $BA
+    DB      $4E, $31, $05                   ; conveyor (pushes left) row, row 9 col 17, 5 wide: $04, $05s, $06
+    DB      $4E, $D1, $05                   ; conveyor (pushes left) row, row 14 col 17, 5 wide: $04, $05s, $06
+    DB      $8E, $71, $05                   ; conveyor (pushes left) row, row 19 col 17, 5 wide: $04, $05s, $06
+    DB      $4D, $38, $05                   ; conveyor (pushes right) row, row 9 col 24, 5 wide: $B8, $B9s, $BA
+    DB      $4D, $D8, $05                   ; conveyor (pushes right) row, row 14 col 24, 5 wide: $B8, $B9s, $BA
+    DB      $8D, $78, $05                   ; conveyor (pushes right) row, row 19 col 24, 5 wide: $B8, $B9s, $BA
+    DB      $5C, $68, $02                   ; vanishing floor row ($E8) x 2, row 11 col 8
+    DB      $5C, $88, $02                   ; vanishing floor row ($E8) x 2, row 12 col 8
+    DB      $9C, $08, $02                   ; vanishing floor row ($E8) x 2, row 16 col 8
+    DB      $9C, $28, $02                   ; vanishing floor row ($E8) x 2, row 17 col 8
+    DB      $5C, $76, $02                   ; vanishing floor row ($E8) x 2, row 11 col 22
+    DB      $5C, $96, $02                   ; vanishing floor row ($E8) x 2, row 12 col 22
+    DB      $9C, $16, $02                   ; vanishing floor row ($E8) x 2, row 16 col 22
+    DB      $9C, $36, $02                   ; vanishing floor row ($E8) x 2, row 17 col 22
+    DB      $5C, $2F, $02                   ; vanishing floor row ($E8) x 2, row 9 col 15
+    DB      $5C, $CF, $02                   ; vanishing floor row ($E8) x 2, row 14 col 15
+    DB      $9C, $6F, $02                   ; vanishing floor row ($E8) x 2, row 19 col 15
+    DB      $9E, $83, $1A                   ; hazard row, row 20 col 3: the first 26 tiles of the run at +$24
+    DB      $9E, $A2, $1C                   ; hazard row, row 21 col 2: the first 28 tiles of the run at +$24
+    DB      $9F, $A3, $1A                   ; hazard row ($38) x 26, row 21 col 3
+    DB      $9F, $C4, $18                   ; hazard row ($38) x 24, row 22 col 4
+    DB      $A5, $05                        ; blue key, row 16 col 5 (thing 0)
+    DB      $60, $6C                        ; jewel, row 11 col 12 (thing 1)
+    DB      $60, $73                        ; jewel, row 11 col 19 (thing 2)
+    DB      $A4, $19                        ; gold key, row 16 col 25 (thing 3)
+    DB      $50                             ; rest of the list only from level 3
+    DB      $71, $50                        ; roller (flags $08), x $50 y $39, fast (thing 4)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $31, $E0                        ; roller (flags $08), x $D0 y $39 (thing 5)
 
-SUB_A308:
-    CALL    SUB_AA96                        ; CALL SUB_AA96: render tile via VRAM writer
-    LD      A, $03                          ; LD A,$03: A = $03 (return code)
-    RET                                     ; RET: return from SUB_A308
-    DB      $CD, $F0, $A2, $06, $00, $09, $06, $01 ; rope draw: inline Z80 CALL $A2F0 / LD B,$00 ...
-    DB      $18, $F0, $CD, $E3, $A4, $3A, $9A, $71 ; rope draw: inline Z80 LD B,$01 / JR ...
-    DB      $21, $D2, $9F, $06, $00, $4F, $09, $ED ; rope draw: inline Z80 CALL $A4E3 / LD A ...
-    DB      $5B, $B0, $71, $0E, $01, $3A, $98, $71 ; rope draw: inline Z80 LD HL,$9FD1 / LD B,$00 ...
-    DB      $47, $CD, $A7, $AE, $23, $05, $CD, $A7 ; rope draw: inline Z80 CP $FF / JR NZ / LD A ...
-    DB      $AE, $23, $06, $01, $CD, $A7, $AE, $3E ; rope draw: inline Z80 LD C,A / LD A,($7098) ...
-    DB      $03, $C9, $CD, $E3, $A4, $3A, $9A, $71 ; rope draw: inline Z80 LD B,A / INC HL / LD DE ...
-    DB      $21, $D1, $9F, $06, $00, $4F, $09, $7E ; rope draw: inline Z80 CALL $AEA7 / LD A,$03 / RET
-    DB      $FE, $FF, $20, $08, $3A, $98, $71, $4F ; rope draw: inline Z80 tail bytes
-    DB      $06, $01, $18, $05, $4F, $3A, $98, $71 ; rope draw: inline Z80 continued
-    DB      $47, $23, $ED, $5B, $B0, $71, $CD, $A7 ; rope draw: inline Z80 continued
-    DB      $AE, $3E, $03, $C9              ; rope draw: end of rope draw inline data
+ROOM_LIST_22:
+    DB      $04, $4C, $03                   ; slope, row 2 col 12: $00 blank 3 wide x 3 high, then 2 steps of $08 brick 1 high, left-aligned
+    DB      $07, $51, $03                   ; slope, row 2 col 17: $00 blank 3 wide x 3 high, then 2 steps of $08 brick 1 high, right-aligned
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $42, $27, $B1                   ; block of $08 brick, row 9 col 7, 11 wide x 1 high
+    DB      $44, $20, $04                   ; slope, row 9 col 0: $00 blank 4 wide x 4 high, then 3 steps of $08 brick 1 high, left-aligned
+    DB      $42, $60, $1C                   ; block of $08 brick, row 11 col 0, 1 wide x 12 high
+    DB      $83, $E0, $20, $01              ; block of $08 brick, row 23 col 0, 32 wide x 1 high
+    DB      $98, $4F, $06                   ; ladder column ($88 $89), row 18 col 15, 6 high, top row $10 $11
+    DB      $82, $43, $35                   ; block of $08 brick, row 18 col 3, 3 wide x 5 high
+    DB      $42, $CD, $2A                   ; block of $08 brick, row 14 col 13, 2 wide x 10 high
+    DB      $82, $2A, $26                   ; block of $08 brick, row 17 col 10, 2 wide x 6 high
+    DB      $42, $AA, $B1                   ; block of $08 brick, row 13 col 10, 11 wide x 1 high
+    DB      $82, $51, $51                   ; block of $08 brick, row 18 col 17, 5 wide x 1 high
+    DB      $82, $71, $24                   ; block of $08 brick, row 19 col 17, 2 wide x 4 high
+    DB      $42, $5F, $1D                   ; block of $08 brick, row 10 col 31, 1 wide x 13 high
+    DB      $42, $39, $71                   ; block of $08 brick, row 9 col 25, 7 wide x 1 high
+    DB      $9E, $61, $02                   ; hazard row, row 19 col 1: the first 2 tiles of the run at +$24
+    DB      $9F, $81, $02                   ; hazard row ($38) x 2, row 20 col 1
+    DB      $9F, $A1, $02                   ; hazard row ($38) x 2, row 21 col 1
+    DB      $9F, $C1, $02                   ; hazard row ($38) x 2, row 22 col 1
+    DB      $9E, $4B, $02                   ; hazard row, row 18 col 11: the first 2 tiles of the run at +$24
+    DB      $9F, $6B, $02                   ; hazard row ($38) x 2, row 19 col 11
+    DB      $9F, $8B, $02                   ; hazard row ($38) x 2, row 20 col 11
+    DB      $9F, $AB, $02                   ; hazard row ($38) x 2, row 21 col 11
+    DB      $9F, $CB, $02                   ; hazard row ($38) x 2, row 22 col 11
+    DB      $9F, $D3, $0C                   ; hazard row ($38) x 12, row 22 col 19
+    DB      $9E, $B3, $0C                   ; hazard row, row 21 col 19: the first 12 tiles of the run at +$24
+    DB      $69, $D4                        ; gold door, row 14 col 20 (thing 0)
+    DB      $6A, $D1                        ; blue door, row 14 col 17 (thing 1)
+    DB      $5C, $E7, $02                   ; vanishing floor row ($E8) x 2, row 15 col 7
+    DB      $22, $A1                        ; sword, row 5 col 1 (thing 2)
+    DB      $62, $DB                        ; sword, row 14 col 27 (thing 3)
+    DB      $60, $4B                        ; jewel, row 10 col 11 (thing 4)
+    DB      $60, $4E                        ; jewel, row 10 col 14 (thing 5)
+    DB      $59, $3A, $0A                   ; rope column ($90), row 9 col 26, 10 high, top row $C4
+    DB      $59, $3D, $09                   ; rope column ($90), row 9 col 29, 9 high, top row $C4
+    DB      $0A, $A4, $0D                   ; pole column ($95), row 5 col 4, 13 high
+    DB      $31, $71                        ; roller (flags $08), x $70 y $59 (thing 6)
+    DB      $71, $70                        ; roller (flags $08), x $70 y $39, fast (thing 7)
+    DB      $30, $95                        ; climber (flags $48), x $90 y $7F (thing 8)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $30, $E0                        ; climber (flags $48), x $D0 y $37 (thing 9)
 
-SUB_A36A:
-    CALL    SUB_A514                        ; CALL SUB_A514: test tile collision carry
-    JR      C, LOC_A391                     ; JR C,LOC_A391: carry -> occupied, skip draw
-    CALL    SUB_A4E3                        ; CALL SUB_A4E3: decode tile type to $71B0
-    CALL    SUB_A3A0                        ; CALL SUB_A3A0: update entity position
-    LD      A, ($719A)                      ; RAM $719A
+ROOM_LIST_23:
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $42, $20, $11                   ; block of $08 brick, row 9 col 0, 1 wide x 1 high
+    DB      $43, $3F, $02, $0F              ; block of $08 brick, row 9 col 31, 2 wide x 15 high
+    DB      $83, $E0, $20, $01              ; block of $08 brick, row 23 col 0, 32 wide x 1 high
+    DB      $83, $61, $1E, $01              ; block of $08 brick, row 19 col 1, 30 wide x 1 high
+    DB      $43, $21, $1E, $01              ; block of $08 brick, row 9 col 1, 30 wide x 1 high
+    DB      $42, $C1, $91                   ; block of $08 brick, row 14 col 1, 9 wide x 1 high
+    DB      $42, $D2, $D1                   ; block of $08 brick, row 14 col 18, 13 wide x 1 high
+    DB      $85, $A1, $02                   ; slope, row 21 col 1: $08 brick 2 wide x 2 high, then 1 steps of $00 blank 1 high, right-aligned
+    DB      $86, $8C, $03                   ; slope, row 20 col 12: $08 brick 3 wide x 3 high, then 2 steps of $00 blank 1 high, left-aligned
+    DB      $85, $91, $03                   ; slope, row 20 col 17: $08 brick 3 wide x 3 high, then 2 steps of $00 blank 1 high, right-aligned
+    DB      $86, $BD, $02                   ; slope, row 21 col 29: $08 brick 2 wide x 2 high, then 1 steps of $00 blank 1 high, left-aligned
+    DB      $9F, $C3, $09                   ; hazard row ($38) x 9, row 22 col 3
+    DB      $9F, $D4, $09                   ; hazard row ($38) x 9, row 22 col 20
+    DB      $9E, $A2, $0B                   ; hazard row, row 21 col 2: the first 11 tiles of the run at +$24
+    DB      $9E, $B3, $0B                   ; hazard row, row 21 col 19: the first 11 tiles of the run at +$24
+    DB      $58, $25, $05                   ; ladder column ($88 $89), row 9 col 5, 5 high, top row $10 $11
+    DB      $58, $39, $05                   ; ladder column ($88 $89), row 9 col 25, 5 high, top row $10 $11
+    DB      $98, $6F, $05                   ; ladder column ($88 $89), row 19 col 15, 5 high, top row $10 $11
+    DB      $59, $6E, $07                   ; rope column ($90), row 11 col 14, 7 high, top row $C4
+    DB      $70, $66                        ; climber (flags $48), x $60 y $87, fast (thing 0)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $70, $60                        ; climber (flags $48), x $60 y $37, fast (thing 1)
 
-SUB_A378:
-    LD      HL, $9FD2                       ; LD HL,$9FD2: HL = $9FD2 (coord table + 1)
-    CALL    SUB_A540                        ; CALL SUB_A540: tile collision lookup
-    LD      BC, $0102                       ; LD BC,$0102: BC = $0102 (1 row, 2 cols)
-    CALL    SUB_AEA7                        ; CALL SUB_AEA7: write tile block to VRAM
-    INC     HL                              ; INC HL: advance HL to next tile entry
-    INC     HL                              ; INC HL: advance HL by second byte
-    PUSH    BC                              ; PUSH BC: save tile block params
-    LD      BC, $0020                       ; LD BC,$0020: BC = $0020 (one VRAM row stride)
-    DB      $EB                             ; DB $EB: EX DE,HL opcode (mid-routine literal byte)
-    ADD     HL, BC                          ; ADD HL,BC: HL += $0020 (next VRAM row)
-    DB      $EB                             ; DB $EB: EX DE,HL opcode (mid-routine literal byte)
-    POP     BC                              ; POP BC: restore tile block params
-    CALL    SUB_AEA7                        ; CALL SUB_AEA7: write second tile row
+ROOM_LIST_24:
+    DB      $3E, $03                        ; draw room 3's shapes first
+    DB      $67, $90                        ; creature, row 12 col 16 (thing 0)
+    DB      $A7, $4B                        ; creature, row 18 col 11 (thing 1)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $30, $A2                        ; climber (flags $48), x $A0 y $5F (thing 2)
 
-LOC_A391:
-    LD      A, $02                          ; LD A,$02: A = $02 (advance step)
-    RET                                     ; RET: return from LOC_A391
+ROOM_LIST_25:
+    DB      $03, $80, $20, $14              ; block of $08 brick, row 4 col 0, 32 wide x 20 high
+    DB      $00, $AD, $64                   ; block of $00 blank, row 5 col 13, 6 wide x 4 high
+    DB      $58, $2F, $0F                   ; ladder column ($88 $89), row 9 col 15, 15 high, top row $10 $11
+    DB      $22, $AD                        ; sword, row 5 col 13 (thing 0)
+    DB      $22, $AF                        ; sword, row 5 col 15 (thing 1)
+    DB      $22, $B1                        ; sword, row 5 col 17 (thing 2)
+    DB      $31, $80                        ; roller (flags $08), x $80 y $39 (thing 3)
 
-SUB_A394:
-    LD      A, ($71A2)                      ; RAM $71A2
-    SLA     A                               ; SLA A: animation index * 2 (word offset)
-    LD      HL, $72C0                       ; RAM $72C0
-    CALL    SUB_A540                        ; CALL SUB_A540: tile collision lookup
-    RET                                     ; RET: return from SUB_A394
+ROOM_LIST_26:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $58, $2F, $0F                   ; ladder column ($88 $89), row 9 col 15, 15 high, top row $10 $11
+    DB      $02, $AA, $15                   ; block of $08 brick, row 5 col 10, 1 wide x 5 high
+    DB      $02, $B5, $15                   ; block of $08 brick, row 5 col 21, 1 wide x 5 high
 
-SUB_A3A0:
-    CALL    SUB_A394                        ; CALL SUB_A394: get collision result in HL
-    LD      DE, ($71B0)                     ; RAM $71B0
-    LD      (HL), E                         ; LD (HL),E: store lo byte of $71B0 to HL
-    INC     HL                              ; INC HL: advance to next byte
-    LD      (HL), D                         ; LD (HL),D: store hi byte of $71B0 to HL
-    RET                                     ; RET: return from SUB_A3A0
+ROOM_LIST_27:
+    DB      $9F, $A0, $20                   ; hazard row ($38) x 32, row 21 col 0
+    DB      $9F, $C0, $20                   ; hazard row ($38) x 32, row 22 col 0
+    DB      $9E, $80, $20                   ; hazard row, row 20 col 0: the first 32 tiles of the run at +$24
+    DB      $42, $2F, $21                   ; block of $08 brick, row 9 col 15, 2 wide x 1 high
+    DB      $03, $A0, $01, $12              ; block of $08 brick, row 5 col 0, 1 wide x 18 high
+    DB      $83, $E0, $20, $01              ; block of $08 brick, row 23 col 0, 32 wide x 1 high
+    DB      $82, $61, $24                   ; block of $08 brick, row 19 col 1, 2 wide x 4 high
+    DB      $85, $A3, $02                   ; slope, row 21 col 3: $08 brick 2 wide x 2 high, then 1 steps of $00 blank 1 high, right-aligned
+    DB      $82, $85, $13                   ; block of $08 brick, row 20 col 5, 1 wide x 3 high
+    DB      $82, $88, $13                   ; block of $08 brick, row 20 col 8, 1 wide x 3 high
+    DB      $82, $8B, $13                   ; block of $08 brick, row 20 col 11, 1 wide x 3 high
+    DB      $86, $AC, $02                   ; slope, row 21 col 12: $08 brick 2 wide x 2 high, then 1 steps of $00 blank 1 high, left-aligned
+    DB      $82, $6E, $44                   ; block of $08 brick, row 19 col 14, 4 wide x 4 high
+    DB      $82, $D2, $31                   ; block of $08 brick, row 22 col 18, 3 wide x 1 high
+    DB      $82, $75, $14                   ; block of $08 brick, row 19 col 21, 1 wide x 4 high
+    DB      $82, $78, $24                   ; block of $08 brick, row 19 col 24, 2 wide x 4 high
+    DB      $82, $BA, $11                   ; block of $08 brick, row 21 col 26, 1 wide x 1 high
+    DB      $82, $DA, $31                   ; block of $08 brick, row 22 col 26, 3 wide x 1 high
+    DB      $82, $7D, $24                   ; block of $08 brick, row 19 col 29, 2 wide x 4 high
+    DB      $42, $3F, $1E                   ; block of $08 brick, row 9 col 31, 1 wide x 14 high
+    DB      $42, $21, $31                   ; block of $08 brick, row 9 col 1, 3 wide x 1 high
+    DB      $42, $44, $11                   ; block of $08 brick, row 10 col 4, 1 wide x 1 high
+    DB      $82, $41, $11                   ; block of $08 brick, row 18 col 1, 1 wide x 1 high
+    DB      $82, $3B, $21                   ; block of $08 brick, row 17 col 27, 2 wide x 1 high
+    DB      $42, $BD, $11                   ; block of $08 brick, row 13 col 29, 1 wide x 1 high
+    DB      $42, $84, $11                   ; block of $08 brick, row 12 col 4, 1 wide x 1 high
+    DB      $42, $C5, $21                   ; block of $08 brick, row 14 col 5, 2 wide x 1 high
+    DB      $82, $02, $21                   ; block of $08 brick, row 16 col 2, 2 wide x 1 high
+    DB      $42, $89, $21                   ; block of $08 brick, row 12 col 9, 2 wide x 1 high
+    DB      $42, $CB, $11                   ; block of $08 brick, row 14 col 11, 1 wide x 1 high
+    DB      $82, $2A, $11                   ; block of $08 brick, row 17 col 10, 1 wide x 1 high
+    DB      $42, $EE, $11                   ; block of $08 brick, row 15 col 14, 1 wide x 1 high
+    DB      $42, $72, $21                   ; block of $08 brick, row 11 col 18, 2 wide x 1 high
+    DB      $42, $D4, $21                   ; block of $08 brick, row 14 col 20, 2 wide x 1 high
+    DB      $42, $56, $21                   ; block of $08 brick, row 10 col 22, 2 wide x 1 high
+    DB      $42, $99, $11                   ; block of $08 brick, row 12 col 25, 1 wide x 1 high
+    DB      $82, $19, $11                   ; block of $08 brick, row 16 col 25, 1 wide x 1 high
+    DB      $42, $FB, $21                   ; block of $08 brick, row 15 col 27, 2 wide x 1 high
+    DB      $42, $3C, $31                   ; block of $08 brick, row 9 col 28, 3 wide x 1 high
+    DB      $98, $6F, $05                   ; ladder column ($88 $89), row 19 col 15, 5 high, top row $10 $11
+    DB      $9F, $A4, $01                   ; hazard row ($38) x 1, row 21 col 4
+    DB      $9F, $AC, $01                   ; hazard row ($38) x 1, row 21 col 12
+    DB      $23, $A2                        ; torch, row 5 col 2 (thing 0)
+    DB      $D1                             ; rest of the list only from level 9
+    DB      $0C, $A2, $02                   ; blank row, row 5 col 2, 2 wide: $00, $00s, $00
 
-SUB_A3AB:
-    CALL    SUB_A514                        ; CALL SUB_A514: test tile collision carry
-    JR      C, LOC_A3E9                     ; JR C,LOC_A3E9: carry -> no solid tile
-    CALL    SUB_A4E3                        ; CALL SUB_A4E3: decode tile type
-    CALL    SUB_A3A0                        ; CALL SUB_A3A0: update position in $71B0
-    LD      A, ($719A)                      ; RAM $719A
-    LD      HL, $9FD2                       ; LD HL,$9FD2: HL = $9FD2 (coord table)
-    LD      B, $00                          ; LD B,$00: B = $00 (zero extend)
-    LD      C, A                            ; LD C,A: C = tile action code
-    ADD     HL, BC                          ; ADD HL,BC: HL = coord entry address
-    LD      BC, $0301                       ; LD BC,$0301: BC = 3 rows, 1 col
-    CALL    SUB_A304                        ; CALL SUB_A304: render 3-row tile block
-    INC     HL                              ; INC HL: advance coord pointer
-    LD      BC, $0060                       ; LD BC,$0060: BC = 3 VRAM row strides
-    DB      $EB                             ; DB $EB: EX DE,HL opcode (mid-routine literal byte)
-    ADD     HL, BC                          ; ADD HL,BC: HL += 3 rows stride
-    DB      $EB                             ; DB $EB: EX DE,HL opcode (mid-routine literal byte)
-    LD      BC, $0101                       ; LD BC,$0101: BC = 1 row, 1 col
-    CALL    SUB_AEA7                        ; CALL SUB_AEA7: write 1x1 tile to VRAM
-    JR      LOC_A3E6                        ; JR LOC_A3E6: jump to shared exit (LOC_A391)
+ROOM_LIST_28:
+    DB      $3E, $13                        ; draw room 19's shapes first
+    DB      $0B, $B9                        ; barrier ($E0 barrier), row 5 col 25, 4 high
+    DB      $21, $BB                        ; amulet, row 5 col 27 (thing 0)
+    DB      $31, $70                        ; roller (flags $08), x $70 y $39 (thing 1)
 
-SUB_A3D5:
-    LD      HL, $9FD2                       ; LD HL,$9FD2: HL = $9FD2 (coord table)
-    LD      B, $00                          ; LD B,$00: B = $00 (zero extend)
-    LD      C, A                            ; LD C,A: C = tile action code
-    ADD     HL, BC                          ; ADD HL,BC: HL = coord table entry
-    LD      BC, $0102                       ; LD BC,$0102: BC = 1 row, 2 col
-    LD      DE, ($71B0)                     ; RAM $71B0
-    CALL    SUB_AEA7                        ; CALL SUB_AEA7: write 1x2 tile block
+ROOM_LIST_29:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $0B, $A8                        ; barrier ($E0 barrier), row 5 col 8, 4 high
+    DB      $0B, $AF                        ; barrier ($E0 barrier), row 5 col 15, 4 high
+    DB      $0B, $B6                        ; barrier ($E0 barrier), row 5 col 22, 4 high
+    DB      $20, $B1                        ; jewel, row 5 col 17 (thing 0)
+    DB      $20, $AD                        ; jewel, row 5 col 13 (thing 1)
+    DB      $32, $20                        ; bouncer (flags $10), x $20 y $39 (thing 2)
+    DB      $32, $30                        ; bouncer (flags $10), x $30 y $39 (thing 3)
 
-LOC_A3E6:
-    JP      LOC_A391                        ; JP LOC_A391: jump to shared return
+ROOM_LIST_30:
+    DB      $3F, $16                        ; draw room 22's shapes first, then mirror the screen
+    DB      $62, $C3                        ; sword, row 14 col 3 (thing 0)
+    DB      $60, $4F                        ; jewel, row 10 col 15 (thing 1)
+    DB      $60, $51                        ; jewel, row 10 col 17 (thing 2)
+    DB      $69, $CB                        ; gold door, row 14 col 11 (thing 3)
+    DB      $5C, $27, $07                   ; vanishing floor row ($E8) x 7, row 9 col 7
+    DB      $30, $65                        ; climber (flags $48), x $60 y $7F (thing 4)
+    DB      $31, $61                        ; roller (flags $08), x $60 y $59 (thing 5)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $71, $10                        ; roller (flags $08), x $10 y $39, fast (thing 6)
+    DB      $30, $10                        ; climber (flags $48), x $10 y $37 (thing 7)
 
-LOC_A3E9:
-    CALL    SUB_A4E3                        ; CALL SUB_A4E3: decode tile type
-    LD      A, ($719A)                      ; RAM $719A
-    ADD     A, $02                          ; ADD A,$02: A = action code + 2 (next tile)
-    CALL    SUB_A3D5                        ; CALL SUB_A3D5: render displaced tile row
-    INC     HL                              ; INC HL: advance HL
-    INC     HL                              ; INC HL: advance HL second byte
-    PUSH    BC                              ; PUSH BC: save tile params
-    LD      BC, $0020                       ; LD BC,$0020: BC = $0020 (row stride)
-    DB      $EB                             ; DB $EB: EX DE,HL opcode (mid-routine literal byte)
-    ADD     HL, BC                          ; ADD HL,BC: HL += row stride
-    DB      $EB                             ; DB $EB: EX DE,HL opcode (mid-routine literal byte)
-    POP     BC                              ; POP BC: restore tile params
-    LD      B, $03                          ; LD B,$03: B = 3 (write 3 rows)
-    CALL    SUB_A308                        ; CALL SUB_A308: write 3-row tile block
-    JR      LOC_A3E6                        ; JR LOC_A3E6: jump to shared exit
+ROOM_LIST_31:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $58, $2F, $0F                   ; ladder column ($88 $89), row 9 col 15, 15 high, top row $10 $11
+    DB      $02, $8A, $15                   ; block of $08 brick, row 4 col 10, 1 wide x 5 high
+    DB      $02, $95, $15                   ; block of $08 brick, row 4 col 21, 1 wide x 5 high
+    DB      $23, $AF                        ; torch, row 5 col 15 (thing 0)
+    DB      $11                             ; rest of the list only from level 6
+    DB      $00, $AA, $14                   ; block of $00 blank, row 5 col 10, 1 wide x 4 high
+    DB      $11                             ; rest of the list only from level 6
+    DB      $0C, $AF, $02                   ; blank row, row 5 col 15, 2 wide: $00, $00s, $00
 
-SOUND_WRITE_A405:
-    CALL    SUB_A514                        ; CALL SUB_A514: collision flag test (returns C if occupied)
-    JR      C, LOC_A3E6                     ; JR C, LOC_A3E6: occupied -> abort
-    LD      HL, $707A                       ; HL = $707A (scroll offset / enemy placement counter)
-    INC     (HL)                            ; INC (HL): advance placement counter
-    LD      A, (HL)                         ; A = (HL) new counter value
-    SLA     A                               ; SLA A
-    SLA     A                               ; SLA A: * 4 (4 bytes per enemy slot)
-    LD      B, $00                          ; B = $00
-    LD      C, A                            ; C = A
-    CALL    SUB_A394                        ; CALL SUB_A394: load enemy slot address
-    LD      (HL), C                         ; (HL) = C: store lo byte of slot address
-    INC     HL                              ; INC HL
-    LD      (HL), $FF                       ; (HL) = $FF: mark slot active ($FF = in use)
-    LD      HL, $7304                       ; HL = $7304 (player secondary X)
-    ADD     HL, BC                          ; ADD HL, BC: index into player secondary X array
-    PUSH    HL                              ; PUSH HL
-    LD      A, ($7197)                      ; A = ($7197) tile type byte lo nibble
-    AND     $0F                             ; AND $0F
-    LD      HL, $A496                       ; HL = $A496 (X-position lookup table)
-    LD      B, $00                          ; B = $00
-    LD      C, A                            ; C = A
-    ADD     HL, BC                          ; ADD HL, BC
-    LD      A, (HL)                         ; A = (HL): look up X position
-    POP     HL                              ; POP HL
-    LD      (HL), A                         ; (HL) = A: store enemy X position
-    INC     HL                              ; INC HL
-    PUSH    HL                              ; PUSH HL
-    LD      A, ($7197)                      ; A = ($7197)
-    SRL     A                               ; SRL A
-    SRL     A                               ; SRL A
-    SRL     A                               ; SRL A
-    SRL     A                               ; SRL A: shift hi nibble to lo
-    AND     $0F                             ; AND $0F
-    LD      HL, $A4A5                       ; HL = $A4A5 (Y-position lookup table)
-    LD      B, $00                          ; B = $00
-    LD      C, A                            ; C = A
-    ADD     HL, BC                          ; ADD HL, BC
-    LD      A, (HL)                         ; A = (HL): look up Y position
-    POP     HL                              ; POP HL
-    LD      (HL), A                         ; (HL) = A: store enemy Y position
-    INC     HL                              ; INC HL: advance dest pointer
-    PUSH    HL                              ; PUSH HL: save dest pointer
-    LD      A, ($719A)                      ; RAM $719A
-    LD      E, $48                          ; LD E,$48: E = $48 (default X offset)
-    CP      $86                             ; CP $86: tile = $86 (spider spawn)?
-    JR      NZ, LOC_A45D                    ; JR NZ,LOC_A45D: not spider -> alt X offset
-    DEC     HL                              ; DEC HL: back to Y byte
-    DEC     HL                              ; DEC HL: back further
-    DEC     (HL)                            ; DEC (HL): decrement Y by 1
-    DEC     (HL)                            ; DEC (HL): decrement Y by 1 again
-    INC     HL                              ; INC HL: restore pointer
-    INC     HL                              ; INC HL: restore pointer second step
-    JR      LOC_A465                        ; JR LOC_A465: jump to sprite slot scan
+ROOM_LIST_32:
+    DB      $3E, $1B                        ; draw room 27's shapes first
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $20, $A2                        ; jewel, row 5 col 2 (thing 0)
+    DB      $20, $A5                        ; jewel, row 5 col 5 (thing 1)
+    DB      $22, $BB                        ; sword, row 5 col 27 (thing 2)
+    DB      $22, $BD                        ; sword, row 5 col 29 (thing 3)
+    DB      $02, $BF, $14                   ; block of $08 brick, row 5 col 31, 1 wide x 4 high
 
-LOC_A45D:
-    LD      E, $10                          ; LD E,$10: E = $10 (skeleton X offset)
-    CP      $88                             ; CP $88: tile = $88 (skeleton type)?
-    JR      Z, LOC_A465                     ; JR Z,LOC_A465: yes -> use $10 offset
-    LD      E, $08                          ; LD E,$08: E = $08 (small enemy X offset)
+ROOM_LIST_33:
+    DB      $3E, $0E                        ; draw room 14's shapes first
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $30, $90                        ; climber (flags $48), x $90 y $37 (thing 0)
+    DB      $31, $52                        ; roller (flags $08), x $50 y $61 (thing 1)
 
-LOC_A465:
-    LD      HL, $7086                       ; RAM $7086
+ROOM_LIST_34:
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $4E, $EB, $0A                   ; conveyor (pushes left) row, row 15 col 11, 10 wide: $04, $05s, $06
+    DB      $43, $20, $20, $01              ; block of $08 brick, row 9 col 0, 32 wide x 1 high
+    DB      $42, $40, $1A                   ; block of $08 brick, row 10 col 0, 1 wide x 10 high
+    DB      $82, $80, $33                   ; block of $08 brick, row 20 col 0, 3 wide x 3 high
+    DB      $82, $A3, $22                   ; block of $08 brick, row 21 col 3, 2 wide x 2 high
+    DB      $83, $E0, $20, $01              ; block of $08 brick, row 23 col 0, 32 wide x 1 high
+    DB      $83, $47, $12, $01              ; block of $08 brick, row 18 col 7, 18 wide x 1 high
+    DB      $82, $9D, $33                   ; block of $08 brick, row 20 col 29, 3 wide x 3 high
+    DB      $82, $BB, $22                   ; block of $08 brick, row 21 col 27, 2 wide x 2 high
+    DB      $42, $5F, $1A                   ; block of $08 brick, row 10 col 31, 1 wide x 10 high
+    DB      $42, $E9, $31                   ; block of $08 brick, row 15 col 9, 3 wide x 1 high
+    DB      $42, $F4, $31                   ; block of $08 brick, row 15 col 20, 3 wide x 1 high
+    DB      $A9, $6A                        ; gold door, row 19 col 10 (thing 0)
+    DB      $A9, $75                        ; gold door, row 19 col 21 (thing 1)
+    DB      $64, $6D                        ; gold key, row 11 col 13 (thing 2)
+    DB      $64, $71                        ; gold key, row 11 col 17 (thing 3)
+    DB      $9C, $41, $05                   ; vanishing floor row ($E8) x 5, row 18 col 1
+    DB      $9C, $5A, $05                   ; vanishing floor row ($E8) x 5, row 18 col 26
+    DB      $58, $29, $06                   ; ladder column ($88 $89), row 9 col 9, 6 high, top row $10 $11
+    DB      $58, $35, $06                   ; ladder column ($88 $89), row 9 col 21, 6 high, top row $10 $11
+    DB      $58, $EF, $03                   ; ladder column ($88 $89), row 15 col 15, 3 high, top row $10 $11
+    DB      $98, $EF, $01                   ; ladder column ($88 $89), row 23 col 15, 1 high, top row $10 $11
+    DB      $31, $50                        ; roller (flags $08), x $50 y $39 (thing 4)
 
-LOC_A468:
-    LD      A, (HL)                         ; LD A,(HL): A = sprite slot entry
-    CP      $FF                             ; CP $FF: end of sprite table?
-    JR      Z, LOC_A471                     ; JR Z,LOC_A471: yes -> use this slot
-    INC     HL                              ; INC HL: advance past X byte
-    INC     HL                              ; INC HL: advance to next slot
-    JR      LOC_A468                        ; JR LOC_A468: scan next slot
+ROOM_LIST_35:
+    DB      $3E, $0F                        ; draw room 15's shapes first
 
-LOC_A471:
-    LD      A, ($707A)                      ; RAM $707A
-    INC     A                               ; INC A: A = scroll offset + 1
-    ADD     A, E                            ; ADD A,E: A = sprite Y = offset + X offset
-    LD      (HL), A                         ; LD (HL),A: store Y to sprite slot
-    INC     HL                              ; INC HL: advance to sprite X byte
-    LD      A, ($7196)                      ; RAM $7196
-    BIT     6, A                            ; BIT 6,A: bit 6 = facing-left flag
-    LD      A, $00                          ; LD A,$00: A = $00 (facing right)
-    JR      Z, LOC_A483                     ; JR Z,LOC_A483: not set -> keep $00
-    LD      A, $80                          ; LD A,$80: A = $80 (facing left bit set)
+ROOM_LIST_36:
+    DB      $3E, $19                        ; draw room 25's shapes first
+    DB      $20, $AE                        ; jewel, row 5 col 14 (thing 0)
+    DB      $20, $B1                        ; jewel, row 5 col 17 (thing 1)
+    DB      $30, $80                        ; climber (flags $48), x $80 y $37 (thing 2)
 
-LOC_A483:
-    LD      (HL), A                         ; LD (HL),A: store sprite X/flip to slot
-    LD      A, ($719A)                      ; RAM $719A
-    LD      B, $00                          ; LD B,$00: B = $00 (zero extend)
-    LD      HL, $9FD1                       ; LD HL,$9FD1: HL = $9FD1 (tile frame table)
-    LD      C, A                            ; LD C,A: C = tile action code
-    ADD     HL, BC                          ; ADD HL,BC: HL = frame table entry
-    LD      D, (HL)                         ; LD D,(HL): D = first tile frame byte
-    INC     HL                              ; INC HL: advance to second byte
-    LD      A, (HL)                         ; LD A,(HL): A = second tile frame byte
-    POP     HL                              ; POP HL: restore dest pointer
-    LD      (HL), A                         ; LD (HL),A: store second frame byte
-    INC     HL                              ; INC HL: advance dest
-    LD      (HL), D                         ; LD (HL),D: store first frame byte
-    RET                                     ; RET: return from enemy spawn routine
-    DB      $39, $59, $61, $69, $71, $81, $89, $91 ; enemy spawn X-pos table: column offsets (start)
-    DB      $A1, $A9, $B1, $00, $00, $00, $00, $00 ; enemy spawn X-pos table: continued + null pad
-    DB      $10, $20, $30, $40, $50, $60, $70, $80 ; enemy spawn Y-pos table: row offsets (start)
-    DB      $90, $A0, $B0, $C0, $D0, $D0, $F0 ; enemy spawn Y-pos table: continued
+ROOM_LIST_37:
+    DB      $03, $A0, $20, $13              ; block of $08 brick, row 5 col 0, 32 wide x 19 high
+    DB      $01, $A4, $18, $04              ; block of $00 blank, row 5 col 4, 24 wide x 4 high
+    DB      $41, $41, $1E, $04              ; block of $00 blank, row 10 col 1, 30 wide x 4 high
+    DB      $41, $E1, $1E, $04              ; block of $00 blank, row 15 col 1, 30 wide x 4 high
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $58, $26, $05                   ; ladder column ($88 $89), row 9 col 6, 5 high, top row $10 $11
+    DB      $58, $D5, $05                   ; ladder column ($88 $89), row 14 col 21, 5 high, top row $10 $11
+    DB      $98, $6F, $05                   ; ladder column ($88 $89), row 19 col 15, 5 high, top row $10 $11
+    DB      $60, $4C                        ; jewel, row 10 col 12 (thing 0)
+    DB      $27, $EB                        ; creature, row 7 col 11 (thing 1)
+    DB      $67, $89                        ; creature, row 12 col 9 (thing 2)
+    DB      $A7, $33                        ; creature, row 17 col 19 (thing 3)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $0B, $AD                        ; barrier ($E0 barrier), row 5 col 13, 4 high
+    DB      $0B, $B2                        ; barrier ($E0 barrier), row 5 col 18, 4 high
 
-SUB_A4B5:
-    LD      A, ($71A7)                      ; A = ($71A7) player current speed
-    LD      HL, $A4C5                       ; HL = $A4C5 (speed modifier table)
-    LD      B, $00                          ; B = $00
-    LD      C, A                            ; C = A (use speed as index)
-    ADD     HL, BC                          ; ADD HL, BC
-    LD      C, (HL)                         ; C = (HL): load speed modifier
-    LD      A, ($71A8)                      ; A = ($71A8) base speed
-    ADD     A, C                            ; ADD A, C: add modifier
-    RET                                     ; RET (A = adjusted speed)
-    DB      $F8, $FC, $02, $0A, $14, $20, $2E, $3E ; speed modifier table: delta bytes per speed level
-    DB      $50                             ; speed modifier table: last entry ($50)
+ROOM_LIST_38:
+    DB      $3E, $17                        ; draw room 23's shapes first
+    DB      $02, $9F, $25                   ; block of $08 brick, row 4 col 31, 2 wide x 5 high
+    DB      $32, $80                        ; bouncer (flags $10), x $80 y $39 (thing 0)
+    DB      $32, $86                        ; bouncer (flags $10), x $80 y $89 (thing 1)
+    DB      $32, $D6                        ; bouncer (flags $10), x $D0 y $89 (thing 2)
 
-SUB_A4CE:
-    LD      ($71A5), A                      ; ($71A5) = A: save speed level
-    SLA     A                               ; SLA A: * 2 (2 bytes per record)
-    LD      HL, $9477                       ; HL = $9477 (speed record table)
-    LD      B, $00                          ; B = $00
-    LD      C, A                            ; C = A (index)
-    ADD     HL, BC                          ; ADD HL, BC
-    LD      BC, $0004                       ; BC = $0004 (4 bytes per record)
-    LD      DE, $7190                       ; DE = $7190 (destination: speed record buffer)
-    LDIR                                    ; LDIR: copy 4-byte speed record to RAM
-    RET                                     ; RET: return from SUB_A4CE
+ROOM_LIST_39:
+    DB      $3E, $17                        ; draw room 23's shapes first
+    DB      $02, $A0, $14                   ; block of $08 brick, row 5 col 0, 1 wide x 4 high
+    DB      $71, $80                        ; roller (flags $08), x $80 y $39, fast (thing 0)
+    DB      $71, $86                        ; roller (flags $08), x $80 y $89, fast (thing 1)
+    DB      $71, $12                        ; roller (flags $08), x $10 y $61, fast (thing 2)
+    DB      $71, $D2                        ; roller (flags $08), x $D0 y $61, fast (thing 3)
 
-SUB_A4E3:
-    LD      A, ($7196)                      ; A = ($7196) raw tile byte
-    RL      A                               ; RL A
-    RL      A                               ; RL A
-    RL      A                               ; RL A: rotate bits 7:6 to bits 1:0
-    AND     $03                             ; AND $03: isolate type field (2 bits)
-    LD      HL, $71B1                       ; HL = $71B1 (tile type nibble store)
-    LD      (HL), A                         ; (HL) = A: store type
-    DEC     HL                              ; DEC HL -> $71B0
-    LD      A, ($7197)                      ; A = ($7197) second tile byte
-    LD      (HL), A                         ; (HL) = A: store second tile data byte
-    RET                                     ; RET: return from SUB_A4E3
+ROOM_LIST_40:
+    DB      $3E, $13                        ; draw room 19's shapes first
+    DB      $30, $20                        ; climber (flags $48), x $20 y $37 (thing 0)
+    DB      $30, $C0                        ; climber (flags $48), x $C0 y $37 (thing 1)
 
-SUB_A4F8:
-    LD      A, ($7196)                      ; A = ($7196) raw tile byte
-    AND     $3F                             ; AND $3F: mask off action bits
-    LD      HL, $9444                       ; HL = $9444 (tile action table)
-    LD      B, $00                          ; B = $00
-    LD      C, A                            ; C = A (tile index)
-    ADD     HL, BC                          ; ADD HL, BC
-    LD      A, (HL)                         ; A = (HL): look up action code
-    LD      ($719A), A                      ; ($719A) = A: store action code
-    RET                                     ; RET: return from SUB_A4F8
-    DB      $01, $20, $00, $2A, $B0, $71, $09, $22 ; inline Z80: LD BC,$2001 / LD HL,($71B0) ...
-    DB      $B0, $71, $C9                   ; inline Z80: ADD HL,BC / LD ($71B0) / RET
+ROOM_LIST_41:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $32, $10                        ; bouncer (flags $10), x $10 y $39 (thing 0)
+    DB      $32, $80                        ; bouncer (flags $10), x $80 y $39 (thing 1)
 
-SUB_A514:
-    LD      A, ($71A1)                      ; A = ($71A1) player velocity / frame index
-    LD      C, A                            ; C = A
-    LD      A, ($71A2)                      ; A = ($71A2) animation frame counter
-    LD      D, $01                          ; D = $01 (bitmask accumulator seed)
-    SCF                                     ; SCF
-    CCF                                     ; CCF: clear carry
+ROOM_LIST_42:
+    DB      $3F, $10                        ; draw room 16's shapes first, then mirror the screen
+    DB      $18, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high, top row $10 $11
+    DB      $60, $84                        ; jewel, row 12 col 4 (thing 0)
+    DB      $60, $46                        ; jewel, row 10 col 6 (thing 1)
+    DB      $31, $70                        ; roller (flags $08), x $70 y $39 (thing 2)
+    DB      $30, $72                        ; climber (flags $48), x $70 y $5F (thing 3)
+    DB      $30, $88                        ; climber (flags $48), x $80 y $9F (thing 4)
 
-LOC_A51F:                                   ; LOC_A51F:
-    DEC     A                               ; DEC A: count down frame index
-    JP      M, LOC_A52C                     ; JP M, LOC_A52C: went negative -> done counting
-    RL      D                               ; RL D: shift mask bit left
-    JR      NC, LOC_A51F                    ; JR NC, LOC_A51F: no carry -> continue
-    INC     C                               ; INC C: wrap C (column counter)
-    RL      D                               ; RL D
-    JR      NC, LOC_A51F                    ; JR NC, LOC_A51F
+ROOM_LIST_43:
+    DB      $43, $20, $20, $0F              ; block of $08 brick, row 9 col 0, 32 wide x 15 high
+    DB      $02, $A0, $14                   ; block of $08 brick, row 5 col 0, 1 wide x 4 high
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $31, $50                        ; roller (flags $08), x $50 y $39 (thing 0)
+    DB      $32, $D0                        ; bouncer (flags $10), x $D0 y $39 (thing 1)
 
-LOC_A52C:                                   ; LOC_A52C:
-    LD      HL, $71A2                       ; HL = $71A2
-    INC     (HL)                            ; INC (HL): advance frame counter
-    SCF                                     ; SCF
-    LD      HL, $70C0                       ; HL = $70C0 (collision grid base)
-    LD      B, $00                          ; B = $00
-    ADD     HL, BC                          ; ADD HL, BC: index collision grid by column
-    LD      A, D                            ; A = D: bitmask to test
-    AND     (HL)                            ; AND (HL): test collision bit
-    JR      NZ, LOC_A53E                    ; JR NZ, LOC_A53E: bit set -> collision detected
-    SCF                                     ; SCF
-    CCF                                     ; CCF: clear carry (no collision)
-    RET                                     ; RET
+ROOM_LIST_44:
+    DB      $3F, $2B                        ; draw room 43's shapes first, then mirror the screen
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $31, $10                        ; roller (flags $08), x $10 y $39 (thing 0)
+    DB      $27, $E5                        ; creature, row 7 col 5 (thing 1)
 
-LOC_A53E:                                   ; LOC_A53E:
-    SCF                                     ; SCF (set carry = collision detected)
-    RET                                     ; RET
+ROOM_LIST_45:
+    DB      $04, $4C, $03                   ; slope, row 2 col 12: $00 blank 3 wide x 3 high, then 2 steps of $08 brick 1 high, left-aligned
+    DB      $07, $51, $03                   ; slope, row 2 col 17: $00 blank 3 wide x 3 high, then 2 steps of $08 brick 1 high, right-aligned
+    DB      $03, $94, $0C, $14              ; block of $08 brick, row 4 col 20, 12 wide x 20 high
+    DB      $42, $13, $15                   ; block of $08 brick, row 8 col 19, 1 wide x 5 high
+    DB      $42, $2D, $61                   ; block of $08 brick, row 9 col 13, 6 wide x 1 high
+    DB      $42, $AA, $A1                   ; block of $08 brick, row 13 col 10, 10 wide x 1 high
+    DB      $42, $D1, $3A                   ; block of $08 brick, row 14 col 17, 3 wide x 10 high
+    DB      $82, $49, $61                   ; block of $08 brick, row 18 col 9, 6 wide x 1 high
+    DB      $82, $6D, $45                   ; block of $08 brick, row 19 col 13, 4 wide x 5 high
+    DB      $82, $E1, $C1                   ; block of $08 brick, row 23 col 1, 12 wide x 1 high
+    DB      $02, $80, $C1                   ; block of $08 brick, row 4 col 0, 12 wide x 1 high
+    DB      $42, $21, $61                   ; block of $08 brick, row 9 col 1, 6 wide x 1 high
+    DB      $03, $A0, $01, $12              ; block of $08 brick, row 5 col 0, 1 wide x 18 high
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $98, $4F, $06                   ; ladder column ($88 $89), row 18 col 15, 6 high, top row $10 $11
+    DB      $59, $23, $0A                   ; rope column ($90), row 9 col 3, 10 high, top row $C4
+    DB      $59, $25, $0B                   ; rope column ($90), row 9 col 5, 11 high, top row $C4
+    DB      $9E, $A1, $0C                   ; hazard row, row 21 col 1: the first 12 tiles of the run at +$24
+    DB      $9F, $C1, $0C                   ; hazard row ($38) x 12, row 22 col 1
+    DB      $30, $10                        ; climber (flags $48), x $10 y $37 (thing 0)
+    DB      $31, $65                        ; roller (flags $08), x $60 y $81 (thing 1)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $31, $51                        ; roller (flags $08), x $50 y $59 (thing 2)
 
-SUB_A540:
-    PUSH    BC                              ; PUSH BC
-    LD      B, $00                          ; B = $00
-    LD      C, A                            ; C = A (index into table at HL)
-    ADD     HL, BC                          ; ADD HL, BC: HL + index
-    LD      A, (HL)                         ; A = (HL): fetch byte from table
-    POP     BC                              ; POP BC
-    RET                                     ; RET
+ROOM_LIST_46:
+    DB      $3E, $22                        ; draw room 34's shapes first
+    DB      $02, $A0, $84                   ; block of $08 brick, row 5 col 0, 8 wide x 4 high
+    DB      $29, $AB                        ; gold door, row 5 col 11 (thing 0)
+    DB      $29, $B4                        ; gold door, row 5 col 20 (thing 1)
+    DB      $A9, $6C                        ; gold door, row 19 col 12 (thing 2)
+    DB      $A9, $73                        ; gold door, row 19 col 19 (thing 3)
+    DB      $65, $6D                        ; blue key, row 11 col 13 (thing 4)
+    DB      $65, $71                        ; blue key, row 11 col 17 (thing 5)
+    DB      $71, $53                        ; roller (flags $08), x $50 y $69, fast (thing 6)
+    DB      $98, $EF, $01                   ; ladder column ($88 $89), row 23 col 15, 1 high, top row $10 $11
 
-SOUND_WRITE_A548:
-    CALL    SUB_AEFE                        ; CALL SUB_AEFE: VDP address setup (score row rendering helper)
-    LD      DE, $0021                       ; DE = $0021 (item sprite stride / offset)
-    LD      HL, $85D7                       ; HL = $85D7 (item sprite ROM table base)
-    LD      BC, $030A                       ; BC = $030A (B=3 blocks, C=$0A stride)
-    CALL    SUB_A308                        ; CALL SUB_A308: write sprite attribute block
-    LD      HL, $71B2                       ; HL = $71B2 (item pickup table start)
+ROOM_LIST_47:
+    DB      $3E, $22                        ; draw room 34's shapes first
+    DB      $2A, $AB                        ; blue door, row 5 col 11 (thing 0)
+    DB      $2A, $B4                        ; blue door, row 5 col 20 (thing 1)
+    DB      $AA, $6C                        ; blue door, row 19 col 12 (thing 2)
+    DB      $AA, $73                        ; blue door, row 19 col 19 (thing 3)
+    DB      $64, $6D                        ; gold key, row 11 col 13 (thing 4)
+    DB      $64, $71                        ; gold key, row 11 col 17 (thing 5)
+    DB      $98, $EF, $01                   ; ladder column ($88 $89), row 23 col 15, 1 high, top row $10 $11
+    DB      $31, $20                        ; roller (flags $08), x $20 y $39 (thing 6)
+    DB      $31, $79                        ; roller (flags $08), x $70 y $A9 (thing 7)
+
+ROOM_LIST_48:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $02, $94, $C5                   ; block of $08 brick, row 4 col 20, 12 wide x 5 high
+    DB      $22, $AD                        ; sword, row 5 col 13 (thing 0)
+    DB      $20, $B0                        ; jewel, row 5 col 16 (thing 1)
+    DB      $71, $20                        ; roller (flags $08), x $20 y $39, fast (thing 2)
+
+ROOM_LIST_49:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $02, $A0, $14                   ; block of $08 brick, row 5 col 0, 1 wide x 4 high
+    DB      $2A, $B9                        ; blue door, row 5 col 25 (thing 0)
+    DB      $58, $2F, $0F                   ; ladder column ($88 $89), row 9 col 15, 15 high, top row $10 $11
+    DB      $90                             ; rest of the list only from level 4
+    DB      $30, $40                        ; climber (flags $48), x $40 y $37 (thing 1)
+
+ROOM_LIST_50:
+    DB      $43, $20, $20, $0F              ; block of $08 brick, row 9 col 0, 32 wide x 15 high
+    DB      $40, $4A, $B5                   ; block of $00 blank, row 10 col 10, 11 wide x 5 high
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $70, $50                        ; climber (flags $48), x $50 y $37, fast (thing 0)
+    DB      $58, $2A, $06                   ; ladder column ($88 $89), row 9 col 10, 6 high, top row $10 $11
+    DB      $58, $34, $06                   ; ladder column ($88 $89), row 9 col 20, 6 high, top row $10 $11
+    DB      $58, $EF, $09                   ; ladder column ($88 $89), row 15 col 15, 9 high, top row $10 $11
+
+ROOM_LIST_51:
+    DB      $3E, $22                        ; draw room 34's shapes first
+    DB      $66, $6F                        ; red key, row 11 col 15 (thing 0)
+    DB      $31, $75                        ; roller (flags $08), x $70 y $81 (thing 1)
+    DB      $71, $73                        ; roller (flags $08), x $70 y $69, fast (thing 2)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $30, $49                        ; climber (flags $48), x $40 y $A7 (thing 3)
+
+ROOM_LIST_52:
+    DB      $3F, $16                        ; draw room 22's shapes first, then mirror the screen
+    DB      $03, $B2, $0E, $12              ; block of $08 brick, row 5 col 18, 14 wide x 18 high
+    DB      $90                             ; rest of the list only from level 4
+    DB      $30, $10                        ; climber (flags $48), x $10 y $37 (thing 0)
+
+ROOM_LIST_53:
+    DB      $3E, $10                        ; draw room 16's shapes first
+    DB      $18, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high, top row $10 $11
+    DB      $60, $50                        ; jewel, row 10 col 16 (thing 0)
+    DB      $31, $70                        ; roller (flags $08), x $70 y $39 (thing 1)
+    DB      $31, $92                        ; roller (flags $08), x $90 y $61 (thing 2)
+    DB      $31, $18                        ; roller (flags $08), x $10 y $A1 (thing 3)
+
+ROOM_LIST_54:
+    DB      $3E, $13                        ; draw room 19's shapes first
+    DB      $30, $30                        ; climber (flags $48), x $30 y $37 (thing 0)
+
+ROOM_LIST_55:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $58, $2F, $10                   ; ladder column ($88 $89), row 9 col 15, 16 high, top row $10 $11
+    DB      $31, $80                        ; roller (flags $08), x $80 y $39 (thing 0)
+    DB      $31, $70                        ; roller (flags $08), x $70 y $39 (thing 1)
+
+ROOM_LIST_56:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $00, $BF, $14                   ; block of $00 blank, row 5 col 31, 1 wide x 4 high
+    DB      $02, $B8, $14                   ; block of $08 brick, row 5 col 24, 1 wide x 4 high
+    DB      $30, $40                        ; climber (flags $48), x $40 y $37 (thing 0)
+    DB      $70, $80                        ; climber (flags $48), x $80 y $37, fast (thing 1)
+
+ROOM_LIST_57:
+    DB      $3E, $31                        ; draw room 49's shapes first
+    DB      $70, $40                        ; climber (flags $48), x $40 y $37, fast (thing 0)
+
+ROOM_LIST_58:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $30, $40                        ; climber (flags $48), x $40 y $37 (thing 0)
+
+ROOM_LIST_59:
+    DB      $3E, $22                        ; draw room 34's shapes first
+    DB      $A9, $67                        ; gold door, row 19 col 7 (thing 0)
+    DB      $A9, $77                        ; gold door, row 19 col 23 (thing 1)
+    DB      $64, $6D                        ; gold key, row 11 col 13 (thing 2)
+    DB      $64, $71                        ; gold key, row 11 col 17 (thing 3)
+    DB      $31, $49                        ; roller (flags $08), x $40 y $A9 (thing 4)
+
+ROOM_LIST_60:
+    DB      $3E, $22                        ; draw room 34's shapes first
+    DB      $29, $AB                        ; gold door, row 5 col 11 (thing 0)
+    DB      $29, $B4                        ; gold door, row 5 col 20 (thing 1)
+    DB      $25, $AD                        ; blue key, row 5 col 13 (thing 2)
+    DB      $25, $B1                        ; blue key, row 5 col 17 (thing 3)
+    DB      $A5, $6D                        ; blue key, row 19 col 13 (thing 4)
+    DB      $A5, $71                        ; blue key, row 19 col 17 (thing 5)
+    DB      $65, $6C                        ; blue key, row 11 col 12 (thing 6)
+    DB      $65, $72                        ; blue key, row 11 col 18 (thing 7)
+    DB      $31, $99                        ; roller (flags $08), x $90 y $A9 (thing 8)
+    DB      $31, $83                        ; roller (flags $08), x $80 y $69 (thing 9)
+    DB      $31, $85                        ; roller (flags $08), x $80 y $81 (thing 10)
+    DB      $31, $C0                        ; roller (flags $08), x $C0 y $39 (thing 11)
+
+ROOM_LIST_61:
+    DB      $3E, $22                        ; draw room 34's shapes first
+    DB      $2A, $AB                        ; blue door, row 5 col 11 (thing 0)
+    DB      $2A, $B4                        ; blue door, row 5 col 20 (thing 1)
+    DB      $AA, $67                        ; blue door, row 19 col 7 (thing 2)
+    DB      $AA, $78                        ; blue door, row 19 col 24 (thing 3)
+    DB      $64, $6C                        ; gold key, row 11 col 12 (thing 4)
+    DB      $64, $72                        ; gold key, row 11 col 18 (thing 5)
+    DB      $71, $83                        ; roller (flags $08), x $80 y $69, fast (thing 6)
+    DB      $31, $49                        ; roller (flags $08), x $40 y $A9 (thing 7)
+
+ROOM_LIST_62:
+    DB      $3E, $32                        ; draw room 50's shapes first
+    DB      $27, $F6                        ; creature, row 7 col 22 (thing 0)
+    DB      $02, $0F, $29                   ; block of $08 brick, row 0 col 15, 2 wide x 9 high
+    DB      $90                             ; rest of the list only from level 4
+    DB      $30, $20                        ; climber (flags $48), x $20 y $37 (thing 1)
+
+ROOM_LIST_63:
+    DB      $3E, $23                        ; draw room 35's shapes first
+    DB      $90                             ; rest of the list only from level 4
+    DB      $27, $E7                        ; creature, row 7 col 7 (thing 0)
+    DB      $0B, $A6                        ; barrier ($E0 barrier), row 5 col 6, 4 high
+    DB      $0B, $A9                        ; barrier ($E0 barrier), row 5 col 9, 4 high
+    DB      $30, $90                        ; climber (flags $48), x $90 y $37 (thing 1)
+
+ROOM_LIST_64:
+    DB      $3E, $13                        ; draw room 19's shapes first
+    DB      $02, $A0, $24                   ; block of $08 brick, row 5 col 0, 2 wide x 4 high
+    DB      $23, $A3                        ; torch, row 5 col 3 (thing 0)
+    DB      $21, $BB                        ; amulet, row 5 col 27 (thing 1)
+    DB      $21, $A5                        ; amulet, row 5 col 5 (thing 2)
+    DB      $31, $90                        ; roller (flags $08), x $90 y $39 (thing 3)
+    DB      $32, $90                        ; bouncer (flags $10), x $90 y $39 (thing 4)
+    DB      $51                             ; rest of the list only from level 7
+    DB      $23, $A3                        ; torch, row 5 col 3 (thing 5)
+
+ROOM_LIST_65:
+    DB      $3E, $27                        ; draw room 39's shapes first
+    DB      $00, $A0, $14                   ; block of $00 blank, row 5 col 0, 1 wide x 4 high
+    DB      $02, $BF, $14                   ; block of $08 brick, row 5 col 31, 1 wide x 4 high
+    DB      $71, $30                        ; roller (flags $08), x $30 y $39, fast (thing 0)
+    DB      $71, $12                        ; roller (flags $08), x $10 y $61, fast (thing 1)
+    DB      $71, $B2                        ; roller (flags $08), x $B0 y $61, fast (thing 2)
+    DB      $71, $36                        ; roller (flags $08), x $30 y $89, fast (thing 3)
+
+ROOM_LIST_66:
+    DB      $3E, $16                        ; draw room 22's shapes first
+    DB      $62, $DB                        ; sword, row 14 col 27 (thing 0)
+    DB      $60, $4A                        ; jewel, row 10 col 10 (thing 1)
+    DB      $60, $4E                        ; jewel, row 10 col 14 (thing 2)
+    DB      $71, $70                        ; roller (flags $08), x $70 y $39, fast (thing 3)
+    DB      $31, $71                        ; roller (flags $08), x $70 y $59 (thing 4)
+    DB      $30, $85                        ; climber (flags $48), x $80 y $7F (thing 5)
+
+ROOM_LIST_67:
+    DB      $3E, $05                        ; draw room 5's shapes first
+    DB      $80, $6C, $14                   ; block of $00 blank, row 19 col 12, 1 wide x 4 high
+    DB      $82, $53, $31                   ; block of $08 brick, row 18 col 19, 3 wide x 1 high
+    DB      $8B, $73                        ; barrier ($E0 barrier), row 19 col 19, 4 high
+    DB      $8B, $74                        ; barrier ($E0 barrier), row 19 col 20, 4 high
+    DB      $8B, $75                        ; barrier ($E0 barrier), row 19 col 21, 4 high
+    DB      $65, $CE                        ; blue key, row 14 col 14 (thing 0)
+    DB      $A0, $77                        ; jewel, row 19 col 23 (thing 1)
+    DB      $31, $F2                        ; roller (flags $08), x $F0 y $61 (thing 2)
+    DB      $31, $10                        ; roller (flags $08), x $10 y $39 (thing 3)
+    DB      $30, $99                        ; climber (flags $48), x $90 y $A7 (thing 4)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $30, $D0                        ; climber (flags $48), x $D0 y $37 (thing 5)
+
+ROOM_LIST_68:
+    DB      $3E, $17                        ; draw room 23's shapes first
+    DB      $71, $10                        ; roller (flags $08), x $10 y $39, fast (thing 0)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $31, $32                        ; roller (flags $08), x $30 y $61 (thing 1)
+    DB      $31, $D2                        ; roller (flags $08), x $D0 y $61 (thing 2)
+    DB      $71, $A6                        ; roller (flags $08), x $A0 y $89, fast (thing 3)
+
+ROOM_LIST_69:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $0B, $A8                        ; barrier ($E0 barrier), row 5 col 8, 4 high
+    DB      $0B, $AC                        ; barrier ($E0 barrier), row 5 col 12, 4 high
+    DB      $30, $20                        ; climber (flags $48), x $20 y $37 (thing 0)
+    DB      $30, $30                        ; climber (flags $48), x $30 y $37 (thing 1)
+
+ROOM_LIST_70:
+    DB      $3E, $37                        ; draw room 55's shapes first
+    DB      $72, $20                        ; bouncer (flags $10), x $20 y $39, fast (thing 0)
+    DB      $32, $30                        ; bouncer (flags $10), x $30 y $39 (thing 1)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $02, $A0, $14                   ; block of $08 brick, row 5 col 0, 1 wide x 4 high
+
+ROOM_LIST_71:
+    DB      $3E, $02                        ; draw room 2's shapes first
+    DB      $18, $0F, $06                   ; ladder column ($88 $89), row 0 col 15, 6 high, top row $10 $11
+    DB      $66, $62                        ; red key, row 11 col 2 (thing 0)
+    DB      $30, $20                        ; climber (flags $48), x $20 y $37 (thing 1)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $30, $A0                        ; climber (flags $48), x $A0 y $37 (thing 2)
+
+ROOM_LIST_72:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $31, $50                        ; roller (flags $08), x $50 y $39 (thing 0)
+    DB      $70, $30                        ; climber (flags $48), x $30 y $37, fast (thing 1)
+    DB      $02, $BE, $24                   ; block of $08 brick, row 5 col 30, 2 wide x 4 high
+    DB      $20, $B2                        ; jewel, row 5 col 18 (thing 2)
+    DB      $20, $B6                        ; jewel, row 5 col 22 (thing 3)
+    DB      $20, $BA                        ; jewel, row 5 col 26 (thing 4)
+    DB      $10                             ; rest of the list only from level 2
+    DB      $23, $AF                        ; torch, row 5 col 15 (thing 5)
+    DB      $00, $B2, $E4                   ; block of $00 blank, row 5 col 18, 14 wide x 4 high
+    DB      $02, $A0, $24                   ; block of $08 brick, row 5 col 0, 2 wide x 4 high
+    DB      $20, $A4                        ; jewel, row 5 col 4 (thing 6)
+    DB      $20, $A8                        ; jewel, row 5 col 8 (thing 7)
+    DB      $20, $AC                        ; jewel, row 5 col 12 (thing 8)
+    DB      $50                             ; rest of the list only from level 3
+    DB      $00, $A3, $A4                   ; block of $00 blank, row 5 col 3, 10 wide x 4 high
+    DB      $11                             ; rest of the list only from level 6
+    DB      $0C, $AF, $02                   ; blank row, row 5 col 15, 2 wide: $00, $00s, $00
+    DB      $91                             ; rest of the list only from level 8
+    DB      $00, $A0, $34                   ; block of $00 blank, row 5 col 0, 3 wide x 4 high
+
+ROOM_LIST_73:
+    DB      $3E, $13                        ; draw room 19's shapes first
+    DB      $43, $E2, $1D, $08              ; block of $08 brick, row 15 col 2, 29 wide x 8 high
+    DB      $5C, $23, $1A                   ; vanishing floor row ($E8) x 26, row 9 col 3
+    DB      $42, $2E, $46                   ; block of $08 brick, row 9 col 14, 4 wide x 6 high
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $5F, $D2, $02                   ; hazard row ($38) x 2, row 14 col 18
+    DB      $31, $30                        ; roller (flags $08), x $30 y $39 (thing 0)
+    DB      $31, $A0                        ; roller (flags $08), x $A0 y $39 (thing 1)
+
+ROOM_LIST_74:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $32, $30                        ; bouncer (flags $10), x $30 y $39 (thing 0)
+    DB      $32, $A0                        ; bouncer (flags $10), x $A0 y $39 (thing 1)
+
+ROOM_LIST_75:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $27, $EC                        ; creature, row 7 col 12 (thing 0)
+    DB      $27, $F1                        ; creature, row 7 col 17 (thing 1)
+
+ROOM_LIST_76:
+    DB      $3E, $22                        ; draw room 34's shapes first
+    DB      $29, $AB                        ; gold door, row 5 col 11 (thing 0)
+    DB      $29, $B4                        ; gold door, row 5 col 20 (thing 1)
+    DB      $66, $6C                        ; red key, row 11 col 12 (thing 2)
+    DB      $64, $72                        ; gold key, row 11 col 18 (thing 3)
+    DB      $82, $EF, $21                   ; block of $08 brick, row 23 col 15, 2 wide x 1 high
+    DB      $71, $43                        ; roller (flags $08), x $40 y $69, fast (thing 4)
+
+ROOM_LIST_77:
+    DB      $3E, $22                        ; draw room 34's shapes first
+    DB      $29, $AB                        ; gold door, row 5 col 11 (thing 0)
+    DB      $29, $B4                        ; gold door, row 5 col 20 (thing 1)
+    DB      $AA, $67                        ; blue door, row 19 col 7 (thing 2)
+    DB      $AA, $77                        ; blue door, row 19 col 23 (thing 3)
+    DB      $64, $6C                        ; gold key, row 11 col 12 (thing 4)
+    DB      $65, $72                        ; blue key, row 11 col 18 (thing 5)
+    DB      $31, $20                        ; roller (flags $08), x $20 y $39 (thing 6)
+    DB      $71, $43                        ; roller (flags $08), x $40 y $69, fast (thing 7)
+
+ROOM_LIST_78:
+    DB      $3E, $45                        ; draw room 69's shapes first
+    DB      $30, $40                        ; climber (flags $48), x $40 y $37 (thing 0)
+    DB      $30, $20                        ; climber (flags $48), x $20 y $37 (thing 1)
+
+ROOM_LIST_79:
+    DB      $3E, $32                        ; draw room 50's shapes first
+    DB      $70, $40                        ; climber (flags $48), x $40 y $37, fast (thing 0)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $0B, $A9                        ; barrier ($E0 barrier), row 5 col 9, 4 high
+
+ROOM_LIST_80:
+    DB      $3E, $0F                        ; draw room 15's shapes first
+
+ROOM_LIST_81:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $02, $A0, $24                   ; block of $08 brick, row 5 col 0, 2 wide x 4 high
+    DB      $20, $A3                        ; jewel, row 5 col 3 (thing 0)
+    DB      $20, $A5                        ; jewel, row 5 col 5 (thing 1)
+    DB      $20, $A7                        ; jewel, row 5 col 7 (thing 2)
+    DB      $31, $20                        ; roller (flags $08), x $20 y $39 (thing 3)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $0B, $A7                        ; barrier ($E0 barrier), row 5 col 7, 4 high
+    DB      $0B, $A9                        ; barrier ($E0 barrier), row 5 col 9, 4 high
+    DB      $0B, $AB                        ; barrier ($E0 barrier), row 5 col 11, 4 high
+
+ROOM_LIST_82:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $30, $70                        ; climber (flags $48), x $70 y $37 (thing 0)
+    DB      $27, $F5                        ; creature, row 7 col 21 (thing 1)
+
+ROOM_LIST_83:
+    DB      $3E, $2A                        ; draw room 42's shapes first
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $00, $B1, $14                   ; block of $00 blank, row 5 col 17, 1 wide x 4 high
+    DB      $A0, $52                        ; jewel, row 18 col 18 (thing 0)
+    DB      $A2, $55                        ; sword, row 18 col 21 (thing 1)
+    DB      $82, $CF, $22                   ; block of $08 brick, row 22 col 15, 2 wide x 2 high
+    DB      $30, $98                        ; climber (flags $48), x $90 y $9F (thing 2)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $30, $62                        ; climber (flags $48), x $60 y $5F (thing 3)
+
+ROOM_LIST_84:
+    DB      $3E, $2B                        ; draw room 43's shapes first
+    DB      $31, $20                        ; roller (flags $08), x $20 y $39 (thing 0)
+    DB      $31, $30                        ; roller (flags $08), x $30 y $39 (thing 1)
+
+ROOM_LIST_85:
+    DB      $3E, $13                        ; draw room 19's shapes first
+    DB      $27, $F8                        ; creature, row 7 col 24 (thing 0)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $0B, $AF                        ; barrier ($E0 barrier), row 5 col 15, 4 high
+    DB      $27, $E5                        ; creature, row 7 col 5 (thing 1)
+
+ROOM_LIST_86:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $71, $30                        ; roller (flags $08), x $30 y $39, fast (thing 0)
+
+ROOM_LIST_87:
+    DB      $0B, $A4                        ; barrier ($E0 barrier), row 5 col 4, 4 high
+    DB      $0B, $A5                        ; barrier ($E0 barrier), row 5 col 5, 4 high
+    DB      $0B, $A6                        ; barrier ($E0 barrier), row 5 col 6, 4 high
+    DB      $0B, $A7                        ; barrier ($E0 barrier), row 5 col 7, 4 high
+    DB      $0B, $AB                        ; barrier ($E0 barrier), row 5 col 11, 4 high
+    DB      $0B, $AC                        ; barrier ($E0 barrier), row 5 col 12, 4 high
+    DB      $0B, $AD                        ; barrier ($E0 barrier), row 5 col 13, 4 high
+    DB      $0B, $AE                        ; barrier ($E0 barrier), row 5 col 14, 4 high
+    DB      $0B, $AF                        ; barrier ($E0 barrier), row 5 col 15, 4 high
+    DB      $0B, $B0                        ; barrier ($E0 barrier), row 5 col 16, 4 high
+    DB      $0B, $B1                        ; barrier ($E0 barrier), row 5 col 17, 4 high
+    DB      $0B, $B2                        ; barrier ($E0 barrier), row 5 col 18, 4 high
+    DB      $0B, $B3                        ; barrier ($E0 barrier), row 5 col 19, 4 high
+    DB      $0B, $B7                        ; barrier ($E0 barrier), row 5 col 23, 4 high
+    DB      $0B, $B8                        ; barrier ($E0 barrier), row 5 col 24, 4 high
+    DB      $0B, $B9                        ; barrier ($E0 barrier), row 5 col 25, 4 high
+    DB      $0B, $BA                        ; barrier ($E0 barrier), row 5 col 26, 4 high
+    DB      $43, $20, $20, $0F              ; block of $08 brick, row 9 col 0, 32 wide x 15 high
+    DB      $90                             ; rest of the list only from level 4
+    DB      $31, $50                        ; roller (flags $08), x $50 y $39 (thing 0)
+
+ROOM_LIST_88:
+    DB      $3E, $13                        ; draw room 19's shapes first
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $2B, $AC                        ; red door, row 5 col 12 (thing 0)
+    DB      $2B, $B4                        ; red door, row 5 col 20 (thing 1)
+
+ROOM_LIST_89:
+    DB      $3F, $5B                        ; draw room 91's shapes first, then mirror the screen
+    DB      $66, $F5                        ; red key, row 15 col 21 (thing 0)
+    DB      $2B, $BB                        ; red door, row 5 col 27 (thing 1)
+    DB      $6B, $5B                        ; red door, row 10 col 27 (thing 2)
+    DB      $50                             ; rest of the list only from level 3
+    DB      $31, $10                        ; roller (flags $08), x $10 y $39 (thing 3)
+    DB      $31, $36                        ; roller (flags $08), x $30 y $89 (thing 4)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $30, $A2                        ; climber (flags $48), x $A0 y $5F (thing 5)
+
+ROOM_LIST_90:
+    DB      $07, $A9, $07                   ; slope, row 5 col 9: $00 blank 7 wide x 7 high, then 6 steps of $08 brick 1 high, right-aligned
+    DB      $04, $B0, $06                   ; slope, row 5 col 16: $00 blank 6 wide x 6 high, then 5 steps of $08 brick 1 high, left-aligned
+    DB      $42, $20, $41                   ; block of $08 brick, row 9 col 0, 4 wide x 1 high
+    DB      $42, $C0, $71                   ; block of $08 brick, row 14 col 0, 7 wide x 1 high
+    DB      $82, $60, $91                   ; block of $08 brick, row 19 col 0, 9 wide x 1 high
+    DB      $42, $3B, $51                   ; block of $08 brick, row 9 col 27, 5 wide x 1 high
+    DB      $42, $D8, $81                   ; block of $08 brick, row 14 col 24, 8 wide x 1 high
+    DB      $82, $76, $A1                   ; block of $08 brick, row 19 col 22, 10 wide x 1 high
+    DB      $9E, $80, $09                   ; hazard row, row 20 col 0: the first 9 tiles of the run at +$24
+    DB      $9E, $A9, $01                   ; hazard row, row 21 col 9: the first 1 tiles of the run at +$24
+    DB      $9E, $CA, $01                   ; hazard row, row 22 col 10: the first 1 tiles of the run at +$24
+    DB      $9E, $EB, $01                   ; hazard row, row 23 col 11: the first 1 tiles of the run at +$24
+    DB      $9E, $96, $0A                   ; hazard row, row 20 col 22: the first 10 tiles of the run at +$24
+    DB      $9E, $B5, $01                   ; hazard row, row 21 col 21: the first 1 tiles of the run at +$24
+    DB      $9E, $D4, $01                   ; hazard row, row 22 col 20: the first 1 tiles of the run at +$24
+    DB      $9E, $F3, $01                   ; hazard row, row 23 col 19: the first 1 tiles of the run at +$24
+    DB      $9F, $A0, $09                   ; hazard row ($38) x 9, row 21 col 0
+    DB      $9F, $C0, $0A                   ; hazard row ($38) x 10, row 22 col 0
+    DB      $9F, $E0, $0B                   ; hazard row ($38) x 11, row 23 col 0
+    DB      $9F, $B6, $0B                   ; hazard row ($38) x 11, row 21 col 22
+    DB      $9F, $D5, $0C                   ; hazard row ($38) x 12, row 22 col 21
+    DB      $9F, $F4, $0D                   ; hazard row ($38) x 13, row 23 col 20
+    DB      $60, $8F                        ; jewel, row 12 col 15 (thing 0)
+    DB      $60, $CF                        ; jewel, row 14 col 15 (thing 1)
+    DB      $A0, $0F                        ; jewel, row 16 col 15 (thing 2)
+    DB      $A0, $4F                        ; jewel, row 18 col 15 (thing 3)
+    DB      $A0, $8F                        ; jewel, row 20 col 15 (thing 4)
+    DB      $60, $CB                        ; jewel, row 14 col 11 (thing 5)
+    DB      $60, $D3                        ; jewel, row 14 col 19 (thing 6)
+    DB      $A0, $0C                        ; jewel, row 16 col 12 (thing 7)
+    DB      $A0, $12                        ; jewel, row 16 col 18 (thing 8)
+    DB      $A0, $4D                        ; jewel, row 18 col 13 (thing 9)
+    DB      $A0, $51                        ; jewel, row 18 col 17 (thing 10)
+
+ROOM_LIST_91:
+    DB      $66, $E9                        ; red key, row 15 col 9 (thing 0)
+    DB      $2B, $A3                        ; red door, row 5 col 3 (thing 1)
+    DB      $2A, $B6                        ; blue door, row 5 col 22 (thing 2)
+    DB      $29, $BA                        ; gold door, row 5 col 26 (thing 3)
+    DB      $6B, $43                        ; red door, row 10 col 3 (thing 4)
+    DB      $4B, $F1                        ; barrier ($E0 barrier), row 15 col 17, 4 high
+    DB      $42, $E0, $34                   ; block of $08 brick, row 15 col 0, 3 wide x 4 high
+    DB      $43, $20, $20, $01              ; block of $08 brick, row 9 col 0, 32 wide x 1 high
+    DB      $43, $C0, $20, $01              ; block of $08 brick, row 14 col 0, 32 wide x 1 high
+    DB      $83, $60, $20, $01              ; block of $08 brick, row 19 col 0, 32 wide x 1 high
+    DB      $83, $E0, $20, $01              ; block of $08 brick, row 23 col 0, 32 wide x 1 high
+    DB      $47, $5B, $02                   ; slope, row 10 col 27: $00 blank 2 wide x 2 high, then 1 steps of $08 brick 1 high, right-aligned
+    DB      $42, $5D, $34                   ; block of $08 brick, row 10 col 29, 3 wide x 4 high
+    DB      $47, $FA, $02                   ; slope, row 15 col 26: $00 blank 2 wide x 2 high, then 1 steps of $08 brick 1 high, right-aligned
+    DB      $42, $FC, $44                   ; block of $08 brick, row 15 col 28, 4 wide x 4 high
+    DB      $87, $98, $03                   ; slope, row 20 col 24: $00 blank 3 wide x 3 high, then 2 steps of $08 brick 1 high, right-aligned
+    DB      $82, $9B, $54                   ; block of $08 brick, row 20 col 27, 5 wide x 4 high
+    DB      $9F, $C0, $1B                   ; hazard row ($38) x 27, row 22 col 0
+    DB      $9E, $A0, $1A                   ; hazard row, row 21 col 0: the first 26 tiles of the run at +$24
+    DB      $58, $26, $05                   ; ladder column ($88 $89), row 9 col 6, 5 high, top row $10 $11
+    DB      $58, $D6, $05                   ; ladder column ($88 $89), row 14 col 22, 5 high, top row $10 $11
+    DB      $9C, $65, $0C                   ; vanishing floor row ($E8) x 12, row 19 col 5
+    DB      $50                             ; rest of the list only from level 3
+    DB      $30, $50                        ; climber (flags $48), x $50 y $37 (thing 5)
+
+ROOM_LIST_92:
+    DB      $3E, $13                        ; draw room 19's shapes first
+    DB      $27, $F0                        ; creature, row 7 col 16 (thing 0)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $70, $30                        ; climber (flags $48), x $30 y $37, fast (thing 1)
+
+ROOM_LIST_93:
+    DB      $3E, $13                        ; draw room 19's shapes first
+    DB      $27, $EF                        ; creature, row 7 col 15 (thing 0)
+    DB      $20, $AE                        ; jewel, row 5 col 14 (thing 1)
+    DB      $20, $B0                        ; jewel, row 5 col 16 (thing 2)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $30, $A0                        ; climber (flags $48), x $A0 y $37 (thing 3)
+
+ROOM_LIST_94:
+    DB      $3E, $57                        ; draw room 87's shapes first
+    DB      $90                             ; rest of the list only from level 4
+    DB      $30, $50                        ; climber (flags $48), x $50 y $37 (thing 0)
+
+ROOM_LIST_95:
+    DB      $3E, $0A                        ; draw room 10's shapes first
+    DB      $2B, $AB                        ; red door, row 5 col 11 (thing 0)
+    DB      $2B, $B3                        ; red door, row 5 col 19 (thing 1)
+
+ROOM_LIST_96:
+    DB      $3E, $13                        ; draw room 19's shapes first
+    DB      $31, $40                        ; roller (flags $08), x $40 y $39 (thing 0)
+
+ROOM_LIST_97:
+    DB      $3E, $13                        ; draw room 19's shapes first
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $03, $B3, $0D, $13              ; block of $08 brick, row 5 col 19, 13 wide x 19 high
+    DB      $31, $60                        ; roller (flags $08), x $60 y $39 (thing 0)
+    DB      $31, $40                        ; roller (flags $08), x $40 y $39 (thing 1)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $0B, $AA                        ; barrier ($E0 barrier), row 5 col 10, 4 high
+
+ROOM_LIST_98:
+    DB      $3E, $13                        ; draw room 19's shapes first
+    DB      $08, $0F, $09                   ; ladder column ($88 $89), row 0 col 15, 9 high
+    DB      $03, $A0, $0D, $13              ; block of $08 brick, row 5 col 0, 13 wide x 19 high
+    DB      $30, $80                        ; climber (flags $48), x $80 y $37 (thing 0)
+    DB      $30, $A0                        ; climber (flags $48), x $A0 y $37 (thing 1)
+    DB      $90                             ; rest of the list only from level 4
+    DB      $0B, $B4                        ; barrier ($E0 barrier), row 5 col 20, 4 high
+
+ROOM_LIST_99:
+    DB      $3E, $0B                        ; draw room 11's shapes first
+    DB      $02, $BF, $14                   ; block of $08 brick, row 5 col 31, 1 wide x 4 high
+    DB      $22, $B1                        ; sword, row 5 col 17 (thing 0)
+    DB      $22, $B3                        ; sword, row 5 col 19 (thing 1)
+    DB      $22, $B5                        ; sword, row 5 col 21 (thing 2)
+    DB      $20, $B7                        ; jewel, row 5 col 23 (thing 3)
+    DB      $20, $B9                        ; jewel, row 5 col 25 (thing 4)
+    DB      $20, $BB                        ; jewel, row 5 col 27 (thing 5)
+
+ROOM_LISTS_END:
+
+; -----------------------------------------------------------------------------
+; TILE GROUPS: the tiles room commands draw with, at the offset CMD_GROUPS
+; gives. What a command reads at its offset depends on the command (see the
+; ROOM DATA notes), so groups overlap. The HUD's inventory icons (item code
+; = offset, 2x2 tiles at +1, $A378) and Joe's hazard tiles are in here too.
+; -----------------------------------------------------------------------------
+TILE_GROUPS:
+; +$00 commands $00 $01: blocks (tile at +1)
+;      commands $05 $06 $15 $16: slopes (steps +1, square +3)
+    DB      $01, $00
+; +$02 commands $02 $03: blocks (tile at +1)
+;      commands $04 $07 $14 $17: slopes (steps +1, square +3)
+    DB      $01, $08, $01, $00
+; +$06 command $08: columns (count, tiles)
+;      command $18: columns with a top (count, tiles, top tiles)
+    DB      $02, $88, $89, $10, $11
+; +$0B command $0C: rows (right end, middle, left end)
+;      HUD icon: empty slot
+    DB      $02, $00, $00, $00, $00
+; +$10 command $09: columns (count, tiles)
+;      command $19: columns with a top (count, tiles, top tiles)
+    DB      $01, $90, $C4
+; +$13 command $0A: columns (count, tiles)
+    DB      $01, $95
+; +$15 command $0B: barrier (count, tile)
+    DB      $01, $E0
+; +$17 command $0E: rows (right end, middle, left end)
+    DB      $01, $06, $05, $04
+; +$1B command $0D: rows (right end, middle, left end)
+    DB      $01, $BA, $B9, $B8
+; +$1F command $1C: rows (count or $FF, tiles)
+    DB      $01, $E8
+; +$21 command $1D: rows (count or $FF, tiles)
+    DB      $02, $08, $08
+; +$24 command $1E: rows (count or $FF, tiles)
+    DB      $FF, $D2, $D3, $D4, $D5, $D2, $D3, $D4
+    DB      $D5, $D2, $D3, $D4, $D5, $D2, $D3, $D4
+    DB      $D5, $D2, $D3, $D4, $D5, $D2, $D3, $D4
+    DB      $D5
+HAZARD_TILES:                               ; tiles that kill Joe ($9156)
+    DB      $D2, $D3, $D4, $D5, $38
+; +$42 command $1F: rows (count or $FF, tiles)
+    DB      $01, $38
+; +$44 command $20: jewel (2x2 tiles at +1)
+;      HUD icon: jewel
+    DB      $02, $98, $D8, $99, $D9
+; +$49 command $21: amulet (2x2 tiles at +1)
+    DB      $02, $A8, $AE, $A9, $AF
+; +$4E command $22: sword (2x2 tiles at +1)
+    DB      $02, $96, $97, $9A, $9B
+; +$53 command $23: torch (2x2 tiles at +1)
+;      HUD icon: torch
+    DB      $02, $D0, $D1, $62, $63
+; +$58 command $24: gold key (2x2 tiles at +1)
+;      HUD icon: gold key
+    DB      $02, $78, $79, $7A, $7B
+; +$5D command $25: blue key (2x2 tiles at +1)
+;      HUD icon: blue key
+    DB      $02, $68, $69, $6A, $6B
+; +$62 command $26: red key (2x2 tiles at +1)
+;      HUD icon: red key
+    DB      $02, $70, $71, $72, $73
+; +$67 command $29: gold door (column +1, bottom +2; open: top +3 +4, then 3 rows of +5 +6)
+    DB      $02, $B0, $B7, $B1, $B2, $B3, $B3
+; +$6E command $2A: blue door (column +1, bottom +2; open: top +3 +4, then 3 rows of +5 +6)
+    DB      $02, $BB, $9C, $BC, $BD, $BE, $BE
+; +$75 command $2B: red door (column +1, bottom +2; open: top +3 +4, then 3 rows of +5 +6)
+    DB      $02, $C0, $C7, $C1, $C2, $C3, $C3
+; +$7C command $27: creature (2x2 tiles at +1)
+    DB      $02, $A0, $A1, $A2, $A3
+; +$81 command $28: creature (2x2 tiles at +1)
+    DB      $02, $A5, $A4, $A7, $A6
+; +$86 command $30: enemy (colour, pattern)
+    DB      $0C, $2C
+; +$88 command $32: enemy (colour, pattern)
+    DB      $0F, $0C
+; +$8A command $31: enemy (colour, pattern)
+    DB      $0F, $0C
+; +$8C HUD icon: amulet
+    DB      $02, $60, $AE, $61, $AF
+; +$91 HUD icon: sword
+    DB      $02, $74, $75, $6C, $6D
+
+; =============================================================================
+; LOAD_ROOM ($A067): draw the room at row $71A7, column $71A8 and set up its
+; items, doors and enemies, by running the room's command list (ROOM DATA
+; above).
+;
+; RAM it uses:
+;   $7190/$7191  the next command      $7192/$7193  the end of the list
+;   $7194        include depth          $7195        mirror the included room
+;   $7196-$7199  the current command    $719A        its tile group offset
+;   $719B        the tile a block or slope draws with
+;   $719D/$719E  a block's width and height
+;   $71A0        the block command's length (3 or 4)
+;   $71A1        the room's first byte in the "gone" bitmap at $70C0
+;   $71A2        things (items, doors, enemies) so far
+;   $71A5        room whose list is running   $71B0/$71B1  name table position
+; It clears and refills the enemy objects ($7086), the contact list ($72C0)
+; and the enemy sprites from $7308; $707A counts the enemies.
+; =============================================================================
+LOAD_ROOM:
+    CALL    SUB_AE77                        ; display off
+    CALL    TURN_OFF_SOUND
+    LD      HL, $7086                       ; enemy objects: 7 x 2 bytes, all $FF (free)
+    PUSH    HL
+    POP     DE
+    LD      BC, $000E
+    LD      (HL), $FF
+    INC     DE
+    LDIR
+    LD      BC, $001E                       ; contact list: 15 x 2 bytes of 0...
+    LD      HL, $72C0
+    PUSH    HL
+    POP     DE
+    LD      (HL), $00
+    INC     DE
+    LDIR
+    LD      A, $FE                          ; ...ended by $FE $FE
+    LD      (DE), A
+    DEC     DE
+    LD      (DE), A
+    CALL    CLEAR_ROOM_SCREEN
+    CALL    ROOM_NUMBER
+    LD      ($7015), A                      ; the room number
+    CALL    SET_ROOM_LIST
+    XOR     A
+    LD      ($71A2), A                      ; no things yet
+    LD      A, ($71A5)
+    SLA     A
+    LD      ($71A1), A                      ; the room's 2 bytes in the bitmap at $70C0
+
+; Run commands until the pointer reaches the end of the list: in effect
+; "pointer != end", though it compares a byte at a time.
+ROOM_CMD_LOOP:
+    LD      A, ($7190)
+    LD      HL, $7192
+    CP      (HL)
+    JR      Z, ROOM_CMD_CHECK_HI
+    JR      C, ROOM_CMD
+
+ROOM_CMD_CHECK_HI:
+    LD      A, ($7191)
+    INC     HL
+    CP      (HL)
+    JR      NZ, ROOM_CMD
+
+; End of a list: the room's own (finish), or an included room's (go back to
+; the including list, mirroring the screen first for $3F).
+ROOM_LIST_DONE:
+    LD      A, ($7194)
+    CP      $00
+    JR      Z, ROOM_END
+    DEC     A
+    LD      ($7194), A
+    LD      A, ($7195)
+    CP      $00
+    JR      Z, ROOM_INCLUDE_RETURN
+    CALL    SUB_AB29                        ; mirror rows 5-23
+
+ROOM_INCLUDE_RETURN:
+    POP     AF                              ; restore $7195 and $7190-$7193,
+    LD      ($7195), A                      ; pushed by ROOM_CMD_INCLUDE
+    LD      B, $04
+    LD      HL, $7193
+
+ROOM_INCLUDE_POP:
+    POP     AF
+    LD      (HL), A
+    DEC     HL
+    DJNZ    ROOM_INCLUDE_POP
+
+ROOM_CMD_NEXT2:
+    LD      A, $02                          ; skip a 2-byte command
+
+ROOM_CMD_NEXT:
+    LD      C, A                            ; skip A bytes, then the next command
+    LD      B, $00
+    LD      HL, ($7190)
+    ADD     HL, BC
+    LD      ($7190), HL
+    JR      ROOM_CMD_LOOP
+
+; The room is drawn. Draw the inventory, except while Joe descends into the
+; pyramid at the start of a level ($705F bit 2) outside column 10.
+ROOM_END:
+    LD      A, ($705F)
+    BIT     2, A
+    JR      Z, ROOM_END_HUD
+    LD      A, ($71A8)
+    CP      $0A
+    JR      NZ, ROOM_END_SPRITES
+
+ROOM_END_HUD:
+    CALL    DRAW_INVENTORY                ; draw the inventory
+
+; Clear the sprite table from the first sprite after the room's enemies:
+; $80 - 4 x enemies bytes from $1B08 + 4 x enemies (8 bytes past the
+; table's end).
+ROOM_END_SPRITES:
+    LD      A, ($707A)
+    SLA     A
+    SLA     A
+    LD      C, A
+    LD      A, $80
+    SUB     C
+    LD      H, $00
+    LD      L, A
+    LD      B, $00
+    EX      DE, HL
+    LD      HL, $1B08
+    ADD     HL, BC
+    XOR     A
+    CALL    FILL_VRAM
+    CALL    SUB_AE83                        ; display on
+    RET
+
+; One command: copy it to $7196-$7199 and look up its tile group.
+ROOM_CMD:
+    LD      HL, ($7190)
+    LD      A, (HL)
+    LD      ($7196), A
+    AND     $3E
+    CP      $3E
+    JR      Z, ROOM_CMD_INCLUDE             ; $3E/$3F (whatever bits 6-7)
+    LD      BC, $0003
+    INC     HL
+    LD      DE, $7197
+    LDIR
+    CALL    CMD_GROUP
+    LD      A, ($7196)
+    AND     $3F
+    LD      B, $02
+    CP      $10
+    JP      Z, ROOM_CMD_LEVEL2
+    CP      $11
+    JP      Z, ROOM_CMD_LEVEL6
+    CP      $0B
+    JP      Z, ROOM_CMD_BARRIER
+    CP      $20
+    JR      C, ROOM_CMD_SHAPE
+    CP      $29
+    JR      C, ROOM_CMD_ITEM
+    CP      $30
+    JR      C, ROOM_CMD_DOOR
+    LD      A, ($7194)                      ; $30-$32: an enemy, unless in
+    CP      $00                             ; an included room
+    JR      NZ, ROOM_CMD_NEXT2
+    CALL    PLACE_ENEMY
+
+ROOM_CMD_NEXT2_JP:
+    JP      ROOM_CMD_NEXT2
+
+ROOM_CMD_ITEM:
+    LD      A, ($7194)                      ; $20-$28: an item or creature,
+    CP      $00                             ; unless in an included room
+    JR      NZ, ROOM_CMD_NEXT2_JP
+    CALL    DRAW_ITEM
+    JR      ROOM_CMD_NEXT2_JP
+
+ROOM_CMD_DOOR:
+    LD      A, ($7194)                      ; $29-$2F: a door, unless in an
+    CP      $00                             ; included room
+    JR      NZ, ROOM_CMD_NEXT2_JP
+    CALL    DRAW_DOOR
+    JR      ROOM_CMD_NEXT2_JP
+
+; $00-$1F: a shape. Bits 2-4 pick the handler, which returns the command's
+; length in A.
+ROOM_CMD_SHAPE:
+    LD      HL, SHAPE_HANDLERS
+    LD      A, ($7196)
+    SRL     A
+    SRL     A
+    AND     $07
+    SLA     A
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      E, (HL)
+    INC     HL
+    LD      D, (HL)
+    EX      DE, HL
+    CALL    SUB_AE3A                        ; JP (HL)
+    JP      ROOM_CMD_NEXT
+
+; $3E/$3F, room: run that room's list first, then carry on with this one.
+; Saves the list pointers and the mirror flag on the stack. The room number
+; is read at pointer + 1 + the current mirror flag, which is off in every
+; room that includes another, so it's the command's second byte.
+ROOM_CMD_INCLUDE:
+    LD      B, $04
+    LD      HL, $7190
+
+ROOM_INCLUDE_PUSH:
+    LD      A, (HL)
+    INC     HL
+    PUSH    AF
+    DJNZ    ROOM_INCLUDE_PUSH
+    LD      A, ($7195)
+    PUSH    AF
+    LD      HL, ($7190)
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    INC     HL
+    LD      A, (HL)                         ; the room to include
+    PUSH    AF
+    LD      A, ($7196)
+    AND     $01
+    LD      ($7195), A                      ; $3F: mirror it
+    LD      HL, $7194
+    INC     (HL)
+    POP     AF
+    CALL    SET_ROOM_LIST
+    JP      ROOM_CMD_LOOP
+
+; $10/$11: below level (bits 6-7) + 2 (or + 6 for $11), end the list; else
+; skip this 1-byte command. Things after it get the next "gone" bits only
+; on the levels that reach them.
+ROOM_CMD_LEVEL6:
+    LD      B, $06
+
+ROOM_CMD_LEVEL2:
+    LD      A, ($7196)
+    AND     $C0
+    SRL     A
+    SRL     A
+    SRL     A
+    SRL     A
+    SRL     A
+    SRL     A
+    ADD     A, B
+    LD      B, A
+    LD      A, ($71A6)                      ; the level, from 1
+    CP      B
+    JR      C, ROOM_LEVEL_STOP
+    LD      A, $01
+    JP      ROOM_CMD_NEXT
+
+ROOM_LEVEL_STOP:
+    JP      ROOM_LIST_DONE
+
+; Blank rows 5-23 of the name table, then, unless Joe is descending into
+; the pyramid outside column 10, fill rows 0-4 with brick and draw the HUD's
+; frames.
+CLEAR_ROOM_SCREEN:
+    LD      B, $03                          ; unused
+    LD      DE, $0003                       ; unused
+    LD      HL, $18A0
+    LD      DE, $0260
+    XOR     A
+    CALL    FILL_VRAM
+    LD      A, ($705F)
+    BIT     2, A
+    JR      Z, CLEAR_ROOM_TOP
+    LD      A, ($71A8)
+    CP      $0A
+    RET     NZ
+
+CLEAR_ROOM_TOP:
+    LD      HL, $1800
+    LD      DE, $00A0
+    LD      A, $08
+    CALL    FILL_VRAM
+    CALL    SUB_AA5D                        ; the HUD's frames
+    RET
+
+; Shape handlers, by bits 2-4 of the command.
+SHAPE_HANDLERS:
+    DW      DRAW_BLOCK                      ; $00-$03
+    DW      DRAW_SLOPE                      ; $04-$07
+    DW      DRAW_COLUMN                     ; $08-$0B ($0B: ROOM_CMD_BARRIER)
+    DW      DRAW_ENDS_ROW                   ; $0C-$0F
+    DW      DRAW_BLOCK                      ; $10-$13 ($10/$11: level checks)
+    DW      DRAW_SLOPE                      ; $14-$17
+    DW      DRAW_COLUMN_TOP                 ; $18-$1B
+    DW      DRAW_ROW                        ; $1C-$1F
+
+; Block: the group's tile, D wide and E high. Even commands give the size
+; in one byte (hi nibble wide, lo nibble high), odd ones in two.
+DRAW_BLOCK:
+    CALL    CMD_POSITION
+    LD      A, ($719A)
+    LD      HL, $9FD2
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      A, (HL)
+    LD      ($719B), A
+    LD      A, ($7196)
+    AND     $01
+    CP      $00
+    JR      Z, DRAW_BLOCK_NIBBLES
+    LD      HL, $7198
+    LD      D, (HL)
+    INC     HL
+    LD      E, (HL)
+    LD      A, $04
+    LD      ($71A0), A
+    JR      FILL_BLOCK
+
+DRAW_BLOCK_NIBBLES:
+    LD      A, ($7198)
+    LD      E, A
+    SRL     A
+    SRL     A
+    SRL     A
+    SRL     A
+    LD      D, A
+    LD      A, E
+    AND     $0F
+    LD      E, A
+    LD      A, $03
+    LD      ($71A0), A
+
+; Fill D x E tiles of $719B from $71B0, leaving $71B0 on the row below.
+; Returns $71A0.
+FILL_BLOCK:
+    LD      HL, $719D
+    LD      (HL), D
+    INC     HL
+    LD      (HL), E
+    LD      A, ($719E)
+    LD      B, A
+
+FILL_BLOCK_ROW:
+    PUSH    BC
+    LD      A, ($719D)
+    LD      B, A
+    LD      C, $01
+    LD      DE, ($71B0)
+    LD      HL, $719B
+    CALL    SUB_AEA7                        ; write C tiles from HL at DE, B times
+    CALL    NEXT_ROW
+    POP     BC
+    LD      A, ($71A0)
+    DJNZ    FILL_BLOCK_ROW
+    RET
+
+; Slope, n = the third byte: a block of the tile at group + 3, n wide and n
+; high (2n with bit 4), then, from the same corner, steps of the tile at
+; group + 1, n-1 wide down to 1, each 1 row high (2 with bit 4). With bit
+; 0 each step starts a column further right, so they line up on the right.
+DRAW_SLOPE:
+    CALL    CMD_POSITION
+    LD      A, ($719A)
+    LD      HL, $9FD4
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      A, (HL)
+    LD      ($719B), A
+    LD      A, ($7198)
+    LD      D, A
+    LD      E, A
+    LD      A, ($7196)
+    AND     $10
+    CP      $00
+    JR      Z, DRAW_SLOPE_SQUARE
+    SLA     E
+
+DRAW_SLOPE_SQUARE:
+    CALL    FILL_BLOCK
+    CALL    CMD_POSITION                    ; back to the top
+    LD      A, ($719A)
+    LD      HL, $9FD2
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      A, (HL)
+    LD      ($719B), A
+    CALL    SLOPE_SHIFT
+
+DRAW_SLOPE_STEP:
+    LD      HL, $7198
+    DEC     (HL)
+    JR      Z, DRAW_SLOPE_DONE
+    LD      D, (HL)
+    LD      A, ($7196)
+    AND     $10
+    SRL     A
+    SRL     A
+    SRL     A
+    SRL     A
+    INC     A
+    LD      E, A
+    CALL    FILL_BLOCK
+    CALL    SLOPE_SHIFT
+    JR      DRAW_SLOPE_STEP
+
+DRAW_SLOPE_DONE:
+    LD      A, $03
+    RET
+
+SLOPE_SHIFT:
+    LD      A, ($7196)
+    AND     $01
+    RET     Z
+    LD      HL, ($71B0)
+    INC     HL
+    LD      ($71B0), HL
+    RET
+
+; $0B: a barrier, the group's tile in a column 4 high. A 2-byte command.
+ROOM_CMD_BARRIER:
+    LD      A, $04
+    LD      ($7198), A
+    CALL    DRAW_COLUMN
+    LD      A, $02
+    JP      ROOM_CMD_NEXT
+
+; Column: the group's count tiles side by side, repeated down $7198 rows.
+; Leaves HL on the tiles and C = the count.
+DRAW_COLUMN:
+    CALL    CMD_POSITION
+    LD      A, ($719A)
+    LD      HL, $9FD1
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      A, (HL)
+    LD      C, A
+    INC     HL
+    LD      A, ($7198)
+    LD      B, A
+
+PUT_DOWN_AT_CMD:
+    LD      DE, ($71B0)
+
+; Write C tiles from HL at DE, B times down the screen. Returns A = 3.
+PUT_DOWN:
+    CALL    SUB_AA96
+    LD      A, $03
+    RET
+
+; Column with a top: the group's next count tiles over its first row.
+DRAW_COLUMN_TOP:
+    CALL    DRAW_COLUMN
+    LD      B, $00
+    ADD     HL, BC
+    LD      B, $01
+    JR      PUT_DOWN
+
+; Row with ends, n wide: n of group + 1, then n-1 of group + 2 and one of
+; group + 3 over its start, so + 3 is the left end and + 1 the right.
+DRAW_ENDS_ROW:
+    CALL    CMD_POSITION
+    LD      A, ($719A)
+    LD      HL, $9FD2
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      DE, ($71B0)
+    LD      C, $01
+    LD      A, ($7198)
+    LD      B, A
+    CALL    SUB_AEA7
+    INC     HL
+    DEC     B
+    CALL    SUB_AEA7
+    INC     HL
+    LD      B, $01
+    CALL    SUB_AEA7
+    LD      A, $03
+    RET
+
+; Row: the group's count tiles, n times; or, for a count of $FF, the first
+; n tiles after it.
+DRAW_ROW:
+    CALL    CMD_POSITION
+    LD      A, ($719A)
+    LD      HL, $9FD1
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      A, (HL)
+    CP      $FF
+    JR      NZ, DRAW_ROW_REPEAT
+    LD      A, ($7198)
+    LD      C, A
+    LD      B, $01
+    JR      DRAW_ROW_PUT
+
+DRAW_ROW_REPEAT:
+    LD      C, A
+    LD      A, ($7198)
+    LD      B, A
+
+DRAW_ROW_PUT:
+    INC     HL
+    LD      DE, ($71B0)
+    CALL    SUB_AEA7
+    LD      A, $03
+    RET
+
+; $20-$28: an item or creature, the group's 2x2 tiles, unless gone. Its
+; position goes in the contact list.
+DRAW_ITEM:
+    CALL    NEXT_THING_GONE
+    JR      C, THING_DONE
+    CALL    CMD_POSITION
+    CALL    SAVE_CONTACT
+    LD      A, ($719A)
+
+; Draw the 2x2 tiles at $9FD2 + A at DE (also the HUD's inventory icons).
+DRAW_ICON:
+    LD      HL, $9FD2
+    CALL    TABLE_BYTE                      ; HL = $9FD2 + A
+    LD      BC, $0102
+    CALL    SUB_AEA7
+    INC     HL
+    INC     HL
+    PUSH    BC
+    LD      BC, $0020
+    EX      DE, HL
+    ADD     HL, BC
+    EX      DE, HL
+    POP     BC
+    CALL    SUB_AEA7
+
+THING_DONE:
+    LD      A, $02
+    RET
+
+; HL = the contact list entry for the thing just counted ($72C0 + 2 x
+; things).
+CONTACT_ENTRY:
+    LD      A, ($71A2)
+    SLA     A
+    LD      HL, $72C0
+    CALL    TABLE_BYTE
+    RET
+
+SAVE_CONTACT:
+    CALL    CONTACT_ENTRY
+    LD      DE, ($71B0)
+    LD      (HL), E
+    INC     HL
+    LD      (HL), D
+    RET
+
+; $29-$2F: a door: 3 of the group's first tile down, its second below.
+; Once opened (gone), the open door instead: 2 tiles, then 3 rows of 2.
+DRAW_DOOR:
+    CALL    NEXT_THING_GONE
+    JR      C, DRAW_OPEN_DOOR
+    CALL    CMD_POSITION
+    CALL    SAVE_CONTACT
+    LD      A, ($719A)
+    LD      HL, $9FD2
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      BC, $0301
+    CALL    PUT_DOWN_AT_CMD
+    INC     HL
+    LD      BC, $0060
+    EX      DE, HL
+    ADD     HL, BC
+    EX      DE, HL
+    LD      BC, $0101
+    CALL    SUB_AEA7
+    JR      THING_DONE_JP
+
+; Write the 2 tiles at $9FD2 + A at $71B0.
+PUT_PAIR:
+    LD      HL, $9FD2
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      BC, $0102
+    LD      DE, ($71B0)
+    CALL    SUB_AEA7
+
+THING_DONE_JP:
+    JP      THING_DONE
+
+DRAW_OPEN_DOOR:
+    CALL    CMD_POSITION
+    LD      A, ($719A)
+    ADD     A, $02
+    CALL    PUT_PAIR
+    INC     HL
+    INC     HL
+    PUSH    BC
+    LD      BC, $0020
+    EX      DE, HL
+    ADD     HL, BC
+    EX      DE, HL
+    POP     BC
+    LD      B, $03
+    CALL    PUT_DOWN
+    JR      THING_DONE_JP
+
+; $30-$32: an enemy, unless gone (killed). The second byte is its start:
+; lo nibble ENEMY_Y, hi nibble ENEMY_X. Its sprite (from $7308) gets the
+; group's pattern and colour, its object at $7086 the kind's flags plus
+; its sprite number, and $80 in the second byte (fast) with bit 6. Its
+; contact list entry is its sprite table offset and $FF.
+PLACE_ENEMY:
+    CALL    NEXT_THING_GONE
+    JR      C, THING_DONE_JP
+    LD      HL, $707A                       ; one more enemy
+    INC     (HL)
+    LD      A, (HL)
+    SLA     A
+    SLA     A
+    LD      B, $00
+    LD      C, A
+    CALL    CONTACT_ENTRY
+    LD      (HL), C
+    INC     HL
+    LD      (HL), $FF
+    LD      HL, $7304                       ; its sprite: $7304 + 4 x enemies
+    ADD     HL, BC
+    PUSH    HL
+    LD      A, ($7197)
+    AND     $0F
+    LD      HL, ENEMY_Y
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      A, (HL)
+    POP     HL
+    LD      (HL), A                         ; Y
+    INC     HL
+    PUSH    HL
+    LD      A, ($7197)
+    SRL     A
+    SRL     A
+    SRL     A
+    SRL     A
+    AND     $0F
+    LD      HL, ENEMY_X
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      A, (HL)
+    POP     HL
+    LD      (HL), A                         ; X
+    INC     HL
+    PUSH    HL
+    LD      A, ($719A)
+    LD      E, $48                          ; $30 (group $86): climber, 2 lines higher
+    CP      $86
+    JR      NZ, PLACE_ENEMY_KIND
+    DEC     HL
+    DEC     HL
+    DEC     (HL)
+    DEC     (HL)
+    INC     HL
+    INC     HL
+    JR      PLACE_ENEMY_OBJECT
+
+PLACE_ENEMY_KIND:
+    LD      E, $10                          ; $32 (group $88): bouncer
+    CP      $88
+    JR      Z, PLACE_ENEMY_OBJECT
+    LD      E, $08                          ; $31: roller
+
+PLACE_ENEMY_OBJECT:
+    LD      HL, $7086
+
+FIND_FREE_OBJECT:
+    LD      A, (HL)
+    CP      $FF
+    JR      Z, PLACE_ENEMY_STORE
+    INC     HL
+    INC     HL
+    JR      FIND_FREE_OBJECT
+
+PLACE_ENEMY_STORE:
+    LD      A, ($707A)
+    INC     A                               ; sprite number: enemies + 1
+    ADD     A, E
+    LD      (HL), A
+    INC     HL
+    LD      A, ($7196)
+    BIT     6, A
+    LD      A, $00
+    JR      Z, PLACE_ENEMY_SPRITE
+    LD      A, $80
+
+PLACE_ENEMY_SPRITE:
+    LD      (HL), A
+    LD      A, ($719A)
+    LD      B, $00
+    LD      HL, $9FD1
+    LD      C, A
+    ADD     HL, BC
+    LD      D, (HL)                         ; colour
+    INC     HL
+    LD      A, (HL)                         ; pattern
+    POP     HL
+    LD      (HL), A
+    INC     HL
+    LD      (HL), D
+    RET
+
+ENEMY_Y:                                    ; sprite Y by the start's lo nibble (0-10)
+    DB      $39, $59, $61, $69, $71, $81, $89, $91
+    DB      $A1, $A9, $B1, $00, $00, $00, $00
+ENEMY_X:                                    ; sprite X by the hi nibble; 14 gives $D0, not $E0
+    DB      $00, $10, $20, $30, $40, $50, $60, $70
+    DB      $80, $90, $A0, $B0, $C0, $D0, $D0, $F0
+
+; A = the room number at row $71A7, column $71A8.
+ROOM_NUMBER:
+    LD      A, ($71A7)
+    LD      HL, ROW_FIRST_ROOM
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      C, (HL)
+    LD      A, ($71A8)
+    ADD     A, C
+    RET
+
+ROW_FIRST_ROOM:                             ; room number - column, by row
+    DB      $F8, $FC, $02, $0A, $14, $20, $2E, $3E
+    DB      $50
+
+; Point $7190-$7193 at room A's list, and its end ($71A5 = A).
+SET_ROOM_LIST:
+    LD      ($71A5), A
+    SLA     A
+    LD      HL, ROOM_LISTS
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      BC, $0004
+    LD      DE, $7190
+    LDIR
+    RET
+
+; $71B0/$71B1 = the command's name table position: bits 6-7 of its first
+; byte, then its second byte.
+CMD_POSITION:
+    LD      A, ($7196)
+    RL      A
+    RL      A
+    RL      A
+    AND     $03
+    LD      HL, $71B1
+    LD      (HL), A
+    DEC     HL
+    LD      A, ($7197)
+    LD      (HL), A
+    RET
+
+; $719A = the command's tile group offset (CMD_GROUPS).
+CMD_GROUP:
+    LD      A, ($7196)
+    AND     $3F
+    LD      HL, CMD_GROUPS
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      A, (HL)
+    LD      ($719A), A
+    RET
+
+; $71B0 += one row.
+NEXT_ROW:
+    LD      BC, $0020
+    LD      HL, ($71B0)
+    ADD     HL, BC
+    LD      ($71B0), HL
+    RET
+
+; Count the next thing (n = $71A2, then $71A2 + 1); carry if it's gone:
+; bit n mod 8 of $70C0 + $71A1 + n / 8.
+NEXT_THING_GONE:
+    LD      A, ($71A1)
+    LD      C, A
+    LD      A, ($71A2)
+    LD      D, $01
+    SCF
+    CCF
+
+NEXT_THING_BIT:
+    DEC     A
+    JP      M, NEXT_THING_TEST
+    RL      D
+    JR      NC, NEXT_THING_BIT
+    INC     C                               ; past bit 7: next byte, bit 0
+    RL      D
+    JR      NC, NEXT_THING_BIT
+
+NEXT_THING_TEST:
+    LD      HL, $71A2
+    INC     (HL)
+    SCF
+    LD      HL, $70C0
+    LD      B, $00
+    ADD     HL, BC
+    LD      A, D
+    AND     (HL)
+    JR      NZ, NEXT_THING_IS_GONE
+    SCF
+    CCF
+    RET
+
+NEXT_THING_IS_GONE:
+    SCF
+    RET
+
+; A = (HL + A), and HL = HL + A.
+TABLE_BYTE:
+    PUSH    BC
+    LD      B, $00
+    LD      C, A
+    ADD     HL, BC
+    LD      A, (HL)
+    POP     BC
+    RET
+
+; Draw the inventory in the HUD: its 10 x 3 background ($85D7) at row 1,
+; column 1, then the icon of each item in $71B2 (up to $FF), 2 columns
+; apart (DRAW_ICON).
+DRAW_INVENTORY:
+    CALL    SUB_AEFE
+    LD      DE, $0021
+    LD      HL, $85D7
+    LD      BC, $030A
+    CALL    PUT_DOWN
+    LD      HL, $71B2                       ; the inventory
 
 LOC_A55A:                                   ; LOC_A55A:
     LD      A, (HL)                         ; A = (HL): read item table entry
@@ -2275,7 +3696,7 @@ LOC_A55A:                                   ; LOC_A55A:
     JP      Z, LOC_AABB                     ; JP Z, LOC_AABB: done -> update lives/score display
     PUSH    HL                              ; PUSH HL (save table pointer)
     PUSH    DE                              ; PUSH DE (save stride)
-    CALL    SUB_A378                        ; CALL SUB_A378: render item sprite tile pair
+    CALL    DRAW_ICON                       ; the item's 2x2 icon
     POP     DE                              ; POP DE
     INC     DE                              ; INC DE: advance stride by 2
     INC     DE                              ; INC DE
@@ -2363,7 +3784,7 @@ LOC_A664:                                   ; LOC_A664: item placement loop
     LD      ($71B0), DE                     ; ($71B0) = DE: store current item data
     LD      A, $44                          ; A = $44 (item tile number)
     PUSH    DE                              ; PUSH DE
-    CALL    SUB_A378                        ; CALL SUB_A378: render item sprite tile pair
+    CALL    DRAW_ICON                       ; the item's 2x2 icon
     POP     HL                              ; POP HL
     LD      BC, $0027                       ; BC = $0027 (39 bytes per item slot)
     ADD     HL, BC                          ; ADD HL, BC: advance item pointer
@@ -2558,7 +3979,7 @@ SUB_A97A:
     SLA     A                               ; SLA A: A = sub-pattern offset * 8
 
 SUB_A9A0:
-    CALL    SUB_A540                        ; CALL SUB_A540: tile collision/offset lookup
+    CALL    TABLE_BYTE                      ; A = (HL + A)
     LD      IY, $0001                       ; LD IY,$0001: IY = 1 (byte count for PUT_VRAM)
     LD      A, $03                          ; LD A,$03: A = $03 (PUT_VRAM mode)
     CALL    SUB_AE2E                        ; CALL SUB_AE2E: write tile pattern via PUT_VRAM

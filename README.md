@@ -104,7 +104,8 @@ cartridge; the last 4 KB can't be checked that way.
   first, plain or mirrored; `$0B` is a rope; other commands below `$20`
   draw shapes (rectangles, ladders, lines; handlers at `$A20A`); `$20-$28`
   are items (skipped once collected, `$70C0`), `$29-$2F` doors and `$30`
-  up enemies. The disassembly mislabels the loader as a sound routine.
+  up enemies. `original/` has the loader and the room data labelled and
+  commented (`LOAD_ROOM`, `ROOM_LISTS`), one line per command.
 - `$10`/`$11` end a room's list below a level (`$71A6`): its top 2 bits
   plus 2, or plus 6. The levels share most of the layouts; rooms gain
   content (mostly enemies) on levels 2, 3, 4, 6, 7, 8 and 9, levels 4 and up
