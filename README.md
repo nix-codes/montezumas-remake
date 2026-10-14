@@ -252,8 +252,13 @@ cartridge; the last 4 KB can't be checked that way.
   harder (up to 9), every room reset, and Joe comes down the entrance
   hall's pole on the side he left by (see Level start). Levels past 3 use
   level 3's room data.
-- Tests compare falling through the treasure room (several screens) and
-  catching a side pole into the next level against the original.
+- Setting up a new screen as Joe moves (leaving an edge, or the fast
+  jump) runs the main loop past the end of the frame: the barrier task,
+  last in the task table, runs at the start of the next frame, just
+  before that frame's own run.
+- Tests compare falling through the treasure room (several screens),
+  the fast jump off a chain once time is up, and catching a side pole
+  into the next level against the original.
 
 ### Sound
 

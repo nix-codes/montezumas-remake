@@ -86,6 +86,8 @@ type Game struct {
 
 	Inventory items.Inventory
 	Amulet    int                   // contact checks left of the amulet's protection
+	Done      [pyramid.Rooms]uint16 // per room, one bit per contact entry: collected, opened, removed
+
 	// CreatureColour is the creatures' colour entry (20) as the amulet
 	// last set it: grey while it protects Joe, then dark green. 0 for the
 	// room's own colour, which the frame interrupt puts back ($8EB0) when
@@ -94,7 +96,6 @@ type Game struct {
 	CreatureColour byte
 	recolour       bool
 	entered        bool
-	Done      [pyramid.Rooms]uint16 // per room, one bit per contact entry: collected, opened, removed
 
 	Enemies  *enemy.State
 	Contacts []byte
@@ -142,6 +143,10 @@ type Game struct {
 	BarrierTimer byte
 	BarriersOff  bool // $7000 bit 5: hidden and harmless
 	FloorsGone   bool // $7000 bit 6
+	// barrierLate is set when setting up a treasure screen ran the main
+	// loop over the end of the frame: the barrier task, last in the task
+	// table, runs at the start of the next frame instead.
+	barrierLate bool
 
 	// The sound chip, and the player the frame interrupt runs on it.
 	PSG   *sound.PSG
@@ -404,6 +409,10 @@ func (g *Game) Step(in joe.Input) {
 	}
 	moves, blinks := true, true
 	if !frozen {
+		if g.barrierLate {
+			g.barrierLate = false
+			g.barrierTask()
+		}
 		if g.entered {
 			g.entered = false
 			g.recolour = true
@@ -421,7 +430,11 @@ func (g *Game) Step(in joe.Input) {
 		g.movementTask(in, frozen, drawing)
 	}
 	if !frozen && blinks {
-		g.barrierTask()
+		if g.setupPending {
+			g.barrierLate = true
+		} else {
+			g.barrierTask()
+		}
 	}
 
 	if g.Joe.Respawn() {
