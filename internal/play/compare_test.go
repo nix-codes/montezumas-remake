@@ -114,7 +114,7 @@ func TestMatchesOriginal(t *testing.T) {
 // 5, where the hundreds digit of 10,500 being odd means no spare life.
 func TestExtraLife(t *testing.T) {
 	for _, level := range []int{1, 5} {
-		lives := play.StartLives
+		lives := byte(play.StartLives)
 		if level == 1 {
 			lives++
 		}
@@ -274,9 +274,8 @@ func compare(g *play.Game, o *original.Game, tiles bool) string {
 	if got, want := g.Score, bcd(o.Bytes(score, 3)); got != want {
 		return fmt.Sprintf("score: remake %d, original %d", got, want)
 	}
-	// $7049 counts Joe's own life, and loses it as he dies rather than
-	// when he respawns.
-	if got, want := g.Lives, int(o.Peek(lives))-1; got != want && g.Joe.State < joe.Zapped {
+	// $7049 counts Joe's own life too.
+	if got, want := g.Lives, o.Peek(lives)-1; got != want {
 		return fmt.Sprintf("lives: remake %d, original %d", got, want)
 	}
 	if msg := compareSound(g, o); msg != "" {

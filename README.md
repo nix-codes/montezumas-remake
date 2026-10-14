@@ -237,6 +237,25 @@ cartridge; the last 4 KB can't be checked that way.
   Joe respawning. Nothing clears that bit, so a second game over waits for
   fire forever, as does any game over past level 1: only the console's
   reset gets back to the title.
+- **Glitch: double death and 255 lives.** The zap check (`$8D94`) spares
+  Joe only if he is already zapped (state 8, `$8DA5`), not if he's dying
+  some other way. A fall death (state 9) leaves him lying where he landed,
+  and if that's in a blinking barrier (`$E0`), the barrier zaps him as
+  soon as it's lit: the same frame, or later in the death animation,
+  which at `$70` frames always outlasts the barrier's `$30` frames off.
+  Each death takes a life as it happens (`$8DC2`), so he loses two, and
+  the zap starts the death animation over. The same goes for a creature
+  tile while he burns (state 10). Two lives from one mistake can end the
+  game with a spare life still showing. On the last life, though, the
+  count goes from 1 to 0 to `$FF`, and since the game only ends when it
+  is exactly 0 as the death ends (`$8B95`), Joe respawns with 255 lives
+  (the HUD shows at most 18 hats). It works on purpose too: in room 12,
+  jump right off the conveyor platform (from about X 150) to land in the
+  barrier at column 27, far enough down to die. While Joe lies dead, the
+  game reads the tiles around him 3 lines above his body, since the death
+  pose swaps his two sprites (`$8AE0`). The remake reproduces all of this;
+  `TestFallIntoBarrier` checks the barrier lit as he lands, lighting
+  after he lands, and the last-life wrap against the original.
 - Tests compare respawns (in a plain room and a mirrored one) and game
   over on levels 1 and 2 against the original, every frame.
 

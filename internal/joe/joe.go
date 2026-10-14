@@ -103,6 +103,13 @@ type Joe struct {
 	// Sounds has bit n set for each sound effect n (see internal/sound)
 	// Joe started this frame.
 	Sounds uint16
+	// Swapped is set by the fall death's pose, which swaps the rows of
+	// his two sprites ($8AE0): his legs sprite is then 3 lines above his
+	// body, where the game reads the tiles around him, until he respawns.
+	Swapped bool
+	// Lost counts the lives Joe has lost since the game last took them
+	// off its counter: each death takes one as it happens ($8DC2).
+	Lost byte
 }
 
 // ScreenY returns the top of Joe's body sprite on screen.
@@ -143,8 +150,14 @@ func TilesOrigin(x, y byte) (col, row int) {
 // name table as one strip (see tileAt).
 func TileAt(t Tiles, col, row int) byte { return tileAt(t, col, row) }
 
-// read reads the tiles around Joe's legs sprite, 3 lines below his body.
-func (j *Joe) read(t Tiles) buffer { return TilesAround(t, j.X, j.RawY+3) }
+// read reads the tiles around Joe's legs sprite, 3 lines below his body,
+// or above it once the fall death has swapped them.
+func (j *Joe) read(t Tiles) buffer {
+	if j.Swapped {
+		return TilesAround(t, j.X, j.RawY-3)
+	}
+	return TilesAround(t, j.X, j.RawY+3)
+}
 
 func ceil8(v int) int { return ((v + 7) / 8) & 0x1F }
 
@@ -207,7 +220,9 @@ func (j *Joe) Step(in Input, t Tiles, r *Rules) (exit int) {
 // move applies this frame's velocity ($8D80-$8DE7). A wall at body height
 // in the direction he's going stops him sideways for this frame, and for
 // good unless he's rising. Touching a $E0 tile kills him, unless the
-// barriers are off.
+// barriers are off. Only being zapped already spares him ($8DA5): a lit
+// barrier zaps him again as he lies dead from a fall or burns, and takes
+// another life.
 func (j *Joe) move(b buffer, r *Rules) {
 	if j.DX != 0 || j.DY != 0 {
 		j.AnimTick++
@@ -222,7 +237,7 @@ func (j *Joe) move(b buffer, r *Rules) {
 			j.DX = 0
 		}
 		dx = 0
-	} else if b[1] == tileZap && !j.BarriersOff && j.State < Zapped {
+	} else if b[1] == tileZap && !j.BarriersOff && j.State != Zapped {
 		j.die(Zapped)
 	}
 	j.X += byte(dx)
@@ -477,6 +492,7 @@ func (j *Joe) falling(dx, dy int8, b buffer, r *Rules) {
 		// The game swaps the rows of his two sprites for the death pose,
 		// so the body ends up 3 lines lower ($8AE0).
 		j.RawY += 3
+		j.Swapped = true
 		j.die(Dead)
 		return
 	}
@@ -602,10 +618,10 @@ func (j *Joe) fall(b buffer, r *Rules) {
 	j.commit(Falling, 0, 0, b, r)
 }
 
-// Kill kills Joe on touching an enemy ($8DA2). It does nothing if he's
-// already dying.
+// Kill kills Joe on touching an enemy ($8DA2). Like a barrier, it does
+// nothing only if he's already zapped.
 func (j *Joe) Kill() {
-	if j.State < Zapped {
+	if j.State != Zapped {
 		j.die(Zapped)
 	}
 }
@@ -618,6 +634,7 @@ func (j *Joe) die(state int) {
 	j.State = state
 	j.DX, j.DY = 0, 0
 	j.DeathTimer = 0x70
+	j.Lost++
 }
 
 // dead counts down the death animation ($8B8E). The caller respawns Joe

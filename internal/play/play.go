@@ -18,6 +18,12 @@ import (
 // HUD); losing one more ends it.
 const StartLives = 5
 
+// noLives is Lives once Joe has died with no spare life left: the game
+// counts his own life too ($7049), and ends when that count is 0 as his
+// death ends ($8B95). Dying twice at once on the last life takes the count
+// past 0 instead, to 255 lives.
+const noLives = 0xFF
+
 // Joe lands here in the starting room after sliding down the entrance pole.
 const StartX, StartY = 124, 53
 
@@ -81,7 +87,7 @@ type Game struct {
 
 	Joe   joe.Joe
 	Entry joe.Joe // Joe as he entered the room, to respawn him there
-	Lives int
+	Lives byte    // spare lives, $7049 - 1; wraps like the original's byte
 	Score int
 
 	Inventory items.Inventory
@@ -438,11 +444,10 @@ func (g *Game) Step(in joe.Input) {
 	}
 
 	if g.Joe.Respawn() {
-		if g.Lives == 0 {
+		if g.Lives == noLives {
 			g.gameOver()
 			return
 		}
-		g.Lives--
 		g.respawn()
 	}
 }
@@ -458,6 +463,7 @@ func (g *Game) movementTask(in joe.Input, frozen, drawing bool) {
 	g.Joe.BarriersOff, g.Joe.FloorsGone = g.BarriersOff, g.FloorsGone
 	g.Joe.Autopilot = g.Descent
 	exit := g.Joe.Step(in, &g.Tiles, g.Rules.Joe)
+	g.takeLives()
 	if g.Descent && g.Col == pyramid.Centre && g.Joe.Sounds&(1<<sound.Land) != 0 {
 		// Landing in the starting room ends the descent ($8ABA). The game
 		// remembers Joe for respawning as he was before landing: it does
@@ -518,6 +524,7 @@ const (
 // Joe hidden and the sound off.
 func (g *Game) gameOver() {
 	g.GameOver = true
+	g.Lives = StartLives // the count is reset at once, though the hats stay ($8B9D)
 	sound.TurnOff(g.PSG)
 	text, err := g.Rules.ROM.Slice(gameOverText, gameOverLen)
 	if err != nil {
@@ -531,8 +538,8 @@ func (g *Game) gameOver() {
 // stepGameOver is a frame of game over. The main loop waits for fire
 // with no direction held ($8BBE), so only the frame interrupt runs. On
 // level 1, the first time, the game then continues: the score starts
-// again from 0, the lives are back, and Joe respawns. Anywhere else the
-// original waits for the level to be 1 ($8BD1), forever.
+// again from 0 and Joe respawns. Anywhere else the original waits for the
+// level to be 1 ($8BD1), forever.
 func (g *Game) stepGameOver(in joe.Input) {
 	g.Random++
 	g.stepAnimation()
@@ -547,7 +554,6 @@ func (g *Game) stepGameOver(in joe.Input) {
 	}
 	g.GameOver = false
 	g.Score = 0
-	g.Lives = StartLives
 	g.respawn()
 }
 
@@ -607,6 +613,7 @@ func (g *Game) contactTask() {
 		return
 	}
 	g.Joe.Kill()
+	g.takeLives()
 	g.playJoeSounds()
 }
 
@@ -640,11 +647,19 @@ func (g *Game) itemTask() {
 	}
 	if res.KillJoe {
 		g.Joe.Kill()
+		g.takeLives()
 		g.playJoeSounds()
 	}
 	if res.Picked != 0 || res.Opened {
 		g.RedrawHUD()
 	}
+}
+
+// takeLives takes the lives Joe lost off the counter, as each death does
+// ($8DC2).
+func (g *Game) takeLives() {
+	g.Lives -= g.Joe.Lost
+	g.Joe.Lost = 0
 }
 
 // playJoeSounds plays the sound effects Joe started, lowest number last

@@ -42,10 +42,10 @@ func (g *Game) RedrawHUD() {
 		g.Tiles.SetTile(col, 3, 0)
 		g.Tiles.SetTile(22+col, 3, 0)
 	}
-	for i := 0; i < g.Lives && i < 10; i++ {
+	for i := 0; i < int(g.Lives) && i < 10; i++ {
 		g.Tiles.SetTile(1+i, 3, tileLife)
 	}
-	for i := 10; i < g.Lives && i < 18; i++ {
+	for i := 10; i < int(g.Lives) && i < 18; i++ {
 		g.Tiles.SetTile(23+i-10, 3, tileLife)
 	}
 }

@@ -74,10 +74,15 @@ func (j *Joe) Sprites() (body, legs, legsDY int) {
 		return 26, 52, -3
 	case Zapped:
 		// Flashes two frames in eight, following the death timer ($8B7F).
-		if j.DeathTimer&6 == 2 {
-			return 56, 55, 3
+		// Zapped as he lies dead from a fall, his sprites stay swapped.
+		legsDY := 3
+		if j.Swapped {
+			legsDY = -3
 		}
-		return 54, 53, 3
+		if j.DeathTimer&6 == 2 {
+			return 56, 55, legsDY
+		}
+		return 54, 53, legsDY
 	case Burnt:
 		return 30, -1, 0
 	case Walking:
