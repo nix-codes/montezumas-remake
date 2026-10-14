@@ -226,6 +226,7 @@ func sync(g *play.Game, o *original.Game) {
 	g.Joe.FireLatch = o.Peek(fireLatch)
 	g.Joe.StepCounter, g.Joe.StepDelay = o.Peek(0x70AA), o.Peek(0x70AD)
 	g.ContactTimer = int(o.Peek(contactTimer))
+	g.MoveTimer, g.BlinkTimer = int(o.Peek(0x7068)), int(o.Peek(0x7074))
 	g.ItemTimer = int(o.Peek(itemTimer))
 	g.Enemies.Counter = o.Peek(original.FrameCounter)
 	g.Random = uint16(o.Peek(0x7047)) | uint16(o.Peek(0x7048))<<8

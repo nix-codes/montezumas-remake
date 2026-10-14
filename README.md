@@ -28,7 +28,9 @@ make test
 In the remake, Esc is the console's reset button, back to the title
 screen, and PageUp/PageDown jump rooms for testing. `go run ./cmd/game
 -level N` skips the title and starts level N, `-room N` starts in room N;
-`-screenshot out.png` saves an early frame and exits. Jumping to a room
+`-screenshot out.png` saves an early frame and exits. A game starts as
+the original does, with Joe walked from the entrance hall into the
+pyramid. Jumping to a room
 (PageUp/PageDown or `-room`) stands Joe on a floor spot away from its
 enemies, and he respawns there.
 
@@ -108,7 +110,8 @@ cartridge; the last 4 KB can't be checked that way.
   the way, then checks the screen edges. `internal/joe` follows the same
   steps with the same 8-bit variables.
 - Measured: walking 2 px/frame, falling 4 px/frame, the jump arc from the
-  table at `$93AE`, falls of 28+ px kill, conveyors (`$9412`) push 1 px
+  table at `$93AE` (Joe can't land until the frame after his stored
+  velocity stops rising, `$8A79`), falls of 28+ px kill, conveyors (`$9412`) push 1 px
   every other frame, ladders 1 px/frame with a stutter when stepping down
   onto one.
 - Ropes (`$90`, state 4): grab one from above with down on its top tile
@@ -181,6 +184,30 @@ cartridge; the last 4 KB can't be checked that way.
   drops when he dies rather than when he respawns.
 - Not done: the amulet's border flash.
 
+### Level start
+
+- Every level starts in the entrance hall (row 0, column 8) with `$705F`
+  bit 2 set, and the game walks Joe into the pyramid itself: each frame
+  the movement task overwrites the joystick (`$88E6`) with down and
+  towards the middle of the screen, and the jump check (`$90E3`) counts a
+  brick beside his feet as a press, except on a rope. So he slides down
+  the pole, walks to the middle, jumps up the steps, grabs the rope and
+  slides down it into the starting room (going down with the bit set adds
+  2 to the column, `$8F13`). Landing in column 10 clears the bit and saves
+  Joe for respawning (`$8ABA`), as he was before landing.
+- A new game (`$A59D`) starts Joe at the top of the left pole, where the
+  cartridge's sprite table has him from boot. The main loop first waits
+  for the frame interrupt to count down the sync byte (`$A5CA`, 14 frames
+  on the emulator), and all four task counters start at 2, so its first
+  pass runs nothing. The next level keeps Joe's X, so he comes down the
+  right pole from the treasure room's right-hand column; that room load
+  pauses a frame longer than a room change.
+- With the bit set, the loader leaves out the HUD in the entrance hall
+  (`$A1EE`), so the poles run to the top of the screen; `cmd/rooms`
+  captures those rows as `bare`.
+- Tests run the descent on level 1 and from the treasure room into
+  level 2 in both games, every frame.
+
 ### Title screen, dying and game over
 
 - The cartridge boots straight into the title screen (`$8116`): the BIOS
@@ -216,9 +243,9 @@ cartridge; the last 4 KB can't be checked that way.
   down one side. Once time is up, jumping off a chain is fast and redraws
   the screen.
 - Leaving the bottom while sliding down a pole starts the next level:
-  harder (up to 9), every room reset. The original slides Joe down the
-  entrance pole again; the remake starts him in the starting room.
-  Levels past 3 use level 3's room data.
+  harder (up to 9), every room reset, and Joe comes down the entrance
+  hall's pole on the side he left by (see Level start). Levels past 3 use
+  level 3's room data.
 - Tests compare falling through the treasure room (several screens) and
   catching a side pole into the next level against the original.
 
@@ -227,8 +254,8 @@ cartridge; the last 4 KB can't be checked that way.
 - The game plays one sound effect at a time with its own player: `$AC1A`
   starts effect A, and the frame interrupt runs `$AC6D`, which writes the
   sound port directly. It doesn't run while the game is paused drawing a
-  room, and loading a room (`$A06A`) calls `TURN_OFF_SOUND`, so an effect
-  playing then runs on silently. There is no music.
+  room, and loading a room (`$A06A`, the frame after Joe leaves the old
+  one) calls `TURN_OFF_SOUND`, so an effect playing then runs on silently. There is no music.
 - The 10 effects (pointer table at `$AD0B`, data to `$ADFF`): 0 extra life,
   1 leaving the bottom row (into the treasure room or the next level),
   2 item picked up, 3 sword kill, 4 landing, 5 death (burnt, zapped or

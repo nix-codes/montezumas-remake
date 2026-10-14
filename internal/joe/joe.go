@@ -93,6 +93,10 @@ type Joe struct {
 	// they can't zap him, and the disappearing floors ($E8) are gone
 	// ($7000 bit 6), so they don't hold him.
 	BarriersOff, FloorsGone bool
+	// Set by the game while it walks Joe from the entrance hall into the
+	// pyramid at the start of a level ($705F bit 2): a step in front of
+	// him counts as pressing jump.
+	Autopilot bool
 	// Set by Step when Joe jumps off a chain after the treasure room's time
 	// is up: the game redraws the screen ($705F bit 3).
 	Redraw bool
@@ -302,8 +306,12 @@ func (j *Joe) floor(t byte, r *Rules) (ok, fire bool) {
 
 func isHazard(t byte, r *Rules) bool { return contains(r.Hazards, t) }
 
-// jumpPressed reports a new press of a fire button ($90E3).
-func (j *Joe) jumpPressed(in Input) bool {
+// jumpPressed reports a new press of a fire button ($90E3). On autopilot,
+// a brick beside him, except on a rope, is as good as a press.
+func (j *Joe) jumpPressed(in Input, b buffer) bool {
+	if j.Autopilot && (b[0] == tileBrick || b[2] == tileBrick) && j.State != Rope {
+		return true
+	}
 	if !in.Fire {
 		j.FireLatch = 0x80
 		return false
@@ -374,7 +382,7 @@ func (j *Joe) standing(in Input, b buffer, r *Rules) {
 	case in.Right:
 		dx = 2
 	}
-	if j.jumpPressed(in) {
+	if j.jumpPressed(in, b) {
 		j.jump(dx, b, r)
 		return
 	}
@@ -419,7 +427,9 @@ func (j *Joe) jumping(b buffer, r *Rules) {
 	if j.grab(b[1], b, r) {
 		return
 	}
-	if dy < 0 {
+	// Still rising as of last frame: no landing yet, even at the top of
+	// the arc ($8A79 tests the stored velocity, not the new one).
+	if j.DY < 0 {
 		j.commit(Jumping, dx, dy, b, r)
 		return
 	}
@@ -510,7 +520,7 @@ func (j *Joe) ladder(in Input, b buffer, r *Rules) {
 // rope handles state 4 ($8D02).
 func (j *Joe) rope(in Input, b buffer, r *Rules) {
 	j.step(in.Up || in.Down)
-	if j.jumpPressed(in) {
+	if j.jumpPressed(in, b) {
 		var dx int8
 		switch {
 		case in.Left:

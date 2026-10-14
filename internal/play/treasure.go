@@ -118,8 +118,8 @@ func (g *Game) romByte(addr uint16) byte {
 }
 
 // nextLevel starts the next level ($8E20): harder, every room reset, back
-// at the top of the pyramid. (The original slides Joe down the entrance
-// pole into the starting room; here he starts there.)
+// in the entrance hall. Joe comes down the pole on the side he took out of
+// the treasure room.
 func (g *Game) nextLevel() {
 	if g.Level < maxLevel {
 		g.Level++
@@ -129,8 +129,10 @@ func (g *Game) nextLevel() {
 	}
 	g.Treasure = false
 	g.Done = [pyramid.Rooms]uint16{}
-	g.Joe.Place(StartX, StartY)
-	g.Enter(pyramid.Start)
+	g.enterLevel()
+	// Resetting every room on top of drawing the hall makes the pause a
+	// frame longer than a room change's (on the emulator).
+	g.Joe.Frozen++
 }
 
 // Backdrop returns the screen's backdrop colour.

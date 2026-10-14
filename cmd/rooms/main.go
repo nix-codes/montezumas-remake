@@ -127,6 +127,11 @@ func main() {
 		for y := range room.Tiles {
 			copy(room.Tiles[y][:], names[y*32:])
 		}
+		if n == pyramid.Entrance {
+			if room.Bare, err = bareTop(g); err != nil {
+				log.Fatal(err)
+			}
+		}
 		room.Exits = findExits(&room, floors)
 		rooms[n] = room
 
@@ -272,4 +277,21 @@ func writePNG(path string, img image.Image) {
 	if err := png.Encode(f, img); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// bareTop loads the entrance hall again as a level starts ($705F bit 2),
+// when the loader leaves out the HUD, and returns the top rows.
+func bareTop(g *original.Game) (*[roomdata.HUDRows][32]byte, error) {
+	const flags = 0x705F
+	g.Poke(flags, g.Peek(flags)|0x04)
+	defer g.Poke(flags, g.Peek(flags)&^0x04)
+	if err := g.LoadRoom(pyramid.Entrance); err != nil {
+		return nil, err
+	}
+	names := g.VDP.NameTable()
+	var top [roomdata.HUDRows][32]byte
+	for y := range top {
+		copy(top[y][:], names[y*32:])
+	}
+	return &top, nil
 }

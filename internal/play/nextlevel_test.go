@@ -12,8 +12,9 @@ import (
 
 // TestPoleToNextLevel puts both games in the treasure room's right-hand
 // column with Joe jumping towards its pole: he catches it, slides off the
-// bottom of the screen, and the next level starts. The games are compared
-// every frame until the original changes level.
+// bottom of the screen, and the next level starts, with Joe coming down
+// the entrance hall's right-hand pole and walked into the pyramid. The
+// games are compared every frame until he lands in the starting room.
 func TestPoleToNextLevel(t *testing.T) {
 	g := testGame(t, 90, 200, 60)
 	o, err := original.Start("../../build/montezuma.rom", 1)
@@ -52,28 +53,26 @@ func TestPoleToNextLevel(t *testing.T) {
 
 	sawPole := false
 	var heard uint16 // effects played
-	for f := 0; f < 300; f++ {
+	started := false
+	for f := 0; f < 600; f++ {
 		if err := o.Step(coleco.Joystick{}); err != nil {
 			t.Fatal(err)
 		}
 		g.Step(joe.Input{})
 		player := g.Sound
 		player.Effects = nil
-		// Starting the next level, the remake loads the starting room at
-		// once, silencing the chip; the original first slides Joe down the
-		// entrance pole.
-		newLevel := o.Peek(0x71A6) != 1
-		if want := o.Sound(); player != want || !newLevel && g.PSG.Registers() != o.PSG.Registers() {
+		if want := o.Sound(); player != want || g.PSG.Registers() != o.PSG.Registers() {
 			t.Fatalf("frame %d: sound: remake %+v %+v, original %+v %+v", f,
 				player, g.PSG.Registers(), want, o.PSG.Registers())
 		}
 		if player.Active {
 			heard |= 1 << player.ID
 		}
-		if o.Peek(0x71A6) != 1 {
-			if g.Level != 2 || g.Treasure || g.Room != 2 {
-				t.Errorf("frame %d: original started level 2; remake level %d, treasure %v, room %d",
-					f, g.Level, g.Treasure, g.Room)
+		if o.Peek(0x71A6) != 1 && !started {
+			started = true
+			if g.Level != 2 || g.Treasure || g.Room != 0 || !g.Descent {
+				t.Fatalf("frame %d: original started level 2; remake level %d, treasure %v, room %d, descent %v",
+					f, g.Level, g.Treasure, g.Room, g.Descent)
 			}
 			if !sawPole {
 				t.Error("Joe never slid down the pole")
@@ -81,17 +80,27 @@ func TestPoleToNextLevel(t *testing.T) {
 			if want := uint16(1<<sound.Pole | 1<<sound.Below); heard&want != want {
 				t.Errorf("effects played: %010b, want the pole and leaving the bottom row", heard)
 			}
-			return
+		}
+		if descent := o.Peek(0x705F)&0x04 != 0; descent != g.Descent {
+			t.Fatalf("frame %d: descent: remake %v, original %v", f, g.Descent, descent)
 		}
 		oj := o.Joe()
 		got := fmt.Sprintf("x=%d y=%d state=%d", g.Joe.X, g.Joe.ScreenY(), g.Joe.State)
 		want := fmt.Sprintf("x=%d y=%d state=%d", oj.X, oj.Y, oj.State)
-		if got != want {
+		// On the emulator the original's first move in the hall starts
+		// late in the frame and only shows in the next one.
+		if got != want && !(started && o.Peek(0x73EE) == 0x8C && oj.Y == 6) {
 			t.Fatalf("frame %d: Joe: remake %s, original %s", f, got, want)
 		}
 		if oj.State == joe.Pole {
 			sawPole = true
 		}
+		if started && !g.Descent {
+			if g.Room != 2 {
+				t.Errorf("Joe landed in room %d", g.Room)
+			}
+			return
+		}
 	}
-	t.Fatal("the original never started the next level")
+	t.Fatal("the original never started the next level, or Joe never landed")
 }

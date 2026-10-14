@@ -22,7 +22,7 @@ extract: $(ROM)
 rooms: $(ROM)
 	for l in 1 2 3; do go run ./cmd/rooms -rom $(ROM) -level $$l; done
 
-assets/rooms/level%/rooms.json: $(ROM)
+assets/rooms/level%/rooms.json: $(ROM) cmd/rooms/main.go internal/roomdata/roomdata.go
 	go run ./cmd/rooms -rom $(ROM) -level $*
 
 run: $(ROM) $(ROOMS)

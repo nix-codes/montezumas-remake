@@ -112,7 +112,7 @@ func main() {
 		if *startRoom >= len(w.g.Rooms) {
 			log.Fatalf("no room %d", *startRoom)
 		}
-		if *startRoom >= 0 && *startRoom != pyramid.Start {
+		if *startRoom >= 0 {
 			w.g.Teleport(*startRoom)
 		}
 	}
@@ -129,7 +129,7 @@ func main() {
 
 // start starts a game on level, as the title screen does.
 func (w *window) start(level int) {
-	g := play.New(w.levelRooms(level), w.rules, level, pyramid.Start)
+	g := play.New(w.levelRooms(level), w.rules, level, pyramid.Entrance)
 	g.LevelRooms = w.levelRooms
 	g.PSG = w.psg
 	w.g = g

@@ -43,7 +43,15 @@ type Room struct {
 	// ($7207), which overlaps the row buffer at $7200; the main loop then
 	// waits for the frame interrupt to count it down. 0 for other rooms.
 	SyncDelay byte `json:"syncDelay"`
+
+	// Bare is set for the entrance hall only: its top rows as drawn at the
+	// start of a level ($705F bit 2), when the loader leaves out the HUD
+	// ($A1EE) and the poles reach the top of the screen.
+	Bare *[HUDRows][32]byte `json:"bare,omitempty"`
 }
+
+// HUDRows is how many rows at the top of the screen the HUD takes.
+const HUDRows = 5
 
 // Exits lists, per side, the neighbouring room (-1 if none) and where the
 // openings are: tile rows for left and right, tile columns for up and down.
@@ -73,6 +81,9 @@ func Load(path string) ([]Room, error) {
 		if len(r.TilePatterns) != 256*8 || len(r.TileColours) != 32 || len(r.SpritePatterns) != 256*8 ||
 			len(r.SpriteTable) != 32 || len(r.Objects) == 0 {
 			return nil, fmt.Errorf("%s: room %d is missing data (rerun make rooms)", path, i)
+		}
+		if i == 0 && r.Bare == nil {
+			return nil, fmt.Errorf("%s: the entrance hall is missing data (rerun make rooms)", path)
 		}
 	}
 	return rooms, nil

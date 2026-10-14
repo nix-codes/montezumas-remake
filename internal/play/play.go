@@ -21,6 +21,10 @@ const StartLives = 5
 // Joe lands here in the starting room after sliding down the entrance pole.
 const StartX, StartY = 124, 53
 
+// A new game finds Joe at the top of the entrance hall's left pole, where
+// the cartridge's sprite table starts him.
+const entranceX, entranceY = 12, 25
+
 // Main-loop task periods ($A8A1): the contact check runs every 2 frames,
 // the item task every 4.
 const (
@@ -94,7 +98,12 @@ type Game struct {
 	TreasureTimer int
 	Random        uint16
 
+	// Descent is set while the game walks Joe from the entrance hall
+	// into the starting room at the start of a level ($705F bit 2).
+	Descent bool
+
 	setupPending bool // draw a new treasure screen on the next frame
+	silence      bool // turn the sound off on the next frame, as a room loads
 	syncWait     int  // the last frames of Joe's pause, waiting out a mirrored room's sync delay
 	// TreasureScreens counts treasure screens drawn. (The original takes
 	// two frames to draw one; the tests skip comparing that frame.)
@@ -104,8 +113,12 @@ type Game struct {
 	// level starts.
 	LevelRooms func(level int) []roomdata.Room
 
-	// Main-loop task countdowns: a task runs when its count is 1.
+	// Main-loop task countdowns: a task runs when its count is 1. Moving
+	// Joe and the enemies ($88D1) and blinking the barriers ($A8D6) run
+	// every frame, but like the others start a new game at 2 ($7068,
+	// $7074), so the first pass of the main loop runs nothing.
 	ContactTimer, ItemTimer int
+	MoveTimer, BlinkTimer   int
 
 	// Tile animation; these run on from boot, never reset. The frame
 	// interrupt steps through the pattern tables ($7011: 1-3 and 0, bit 7
@@ -153,7 +166,8 @@ func (s *Screen) SetTile(col, row int, t byte) {
 	s.Version++
 }
 
-// New starts a game on level (1-3) in room.
+// New starts a game on level (1-3) in room; in the entrance hall, it
+// starts as the original does, with Joe walked into the pyramid.
 func New(rooms []roomdata.Room, rules *Rules, level, room int) *Game {
 	g := &Game{Rules: rules, Rooms: rooms, Level: level, PSG: sound.NewPSG()}
 	g.Sound.Effects = rules.Sound
@@ -161,7 +175,8 @@ func New(rooms []roomdata.Room, rules *Rules, level, room int) *Game {
 	return g
 }
 
-// Restart starts a new game in room.
+// Restart starts a new game in room, or in the entrance hall as the
+// original does (see enterLevel).
 func (g *Game) Restart(room int) {
 	g.Lives = StartLives
 	g.Score = 0
@@ -170,8 +185,33 @@ func (g *Game) Restart(room int) {
 	g.Amulet = 0
 	g.Done = [pyramid.Rooms]uint16{}
 	g.ContactTimer, g.ItemTimer = contactPeriod, itemPeriod
+	g.MoveTimer, g.BlinkTimer = 1, 1
+	if room == pyramid.Entrance {
+		g.ContactTimer, g.ItemTimer, g.MoveTimer, g.BlinkTimer = 2, 2, 2, 2
+		g.Joe.Place(entranceX, entranceY)
+		g.enterLevel()
+		g.Joe.State = joe.Pole
+		g.Joe.Frozen = startFreeze
+		g.syncWait = startFreeze
+		return
+	}
 	g.Joe.Place(StartX, StartY)
 	g.Enter(room)
+}
+
+// startFreeze is how long a new game stands still before its main loop
+// starts: the original waits for the frame interrupt to count down its
+// sync byte ($A5CA) first.
+const startFreeze = 14
+
+// enterLevel starts a level in the entrance hall, the way both a new game
+// ($A59D) and the next level ($8E20) do. Until Joe lands in the starting
+// room, the game drives him itself (Descent): down his pole, across the
+// hall towards its middle, jumping up the steps, and down the rope into
+// the pyramid.
+func (g *Game) enterLevel() {
+	g.Descent = true
+	g.Enter(pyramid.Entrance)
 }
 
 // Enter switches to room at its own place in the pyramid.
@@ -184,6 +224,7 @@ func (g *Game) Enter(room int) {
 // farthest from its enemies (see SafeSpot), where he also respawns. With
 // no such spot, he keeps his place on screen.
 func (g *Game) Teleport(room int) {
+	g.Descent = false
 	g.Joe.Place(int(g.Joe.X), g.Joe.ScreenY())
 	g.Enter(room)
 	if x, y, ok := g.SafeSpot(); ok {
@@ -263,12 +304,15 @@ func (g *Game) show(room int) {
 	g.Room = room
 	g.Entry = g.Joe
 	g.load()
+	// The original loads the room on the frame after Joe leaves the old
+	// one, and the loader turns the sound off ($A06A); an effect that's
+	// playing runs on silently.
+	g.silence = true
 }
 
 // load sets the room up as the original's loader does: tiles, items and
 // doors already dealt with, and the enemies still there.
 func (g *Game) load() {
-	sound.TurnOff(g.PSG) // $A06A; an effect that's playing runs on silently
 	r := &g.Rooms[g.Room]
 	g.Tiles.T = r.Tiles
 	g.Tiles.Version++
@@ -297,6 +341,13 @@ func (g *Game) load() {
 	}
 	g.Enemies = s
 	g.Rules.Items.Restore(g.itemRoom(), done)
+	if g.Descent && r.Bare != nil {
+		// The entrance hall at the start of a level: no HUD ($A1EE).
+		for y, row := range r.Bare {
+			g.Tiles.T[y] = row
+		}
+		return
+	}
 	g.RedrawHUD()
 }
 
@@ -308,6 +359,10 @@ func (g *Game) itemRoom() *items.Room {
 // and item tasks, then the enemies and Joe.
 func (g *Game) Step(in joe.Input) {
 	defer g.PSG.EndFrame()
+	if g.silence {
+		g.silence = false
+		sound.TurnOff(g.PSG)
+	}
 	if g.GameOver {
 		g.stepGameOver(in)
 		return
@@ -333,6 +388,7 @@ func (g *Game) Step(in joe.Input) {
 		g.stepAnimation()
 		g.Sound.Tick(g.PSG)
 	}
+	moves, blinks := true, true
 	if !frozen {
 		if g.tick(&g.ContactTimer, contactPeriod) {
 			g.contactTask()
@@ -340,12 +396,44 @@ func (g *Game) Step(in joe.Input) {
 		if g.tick(&g.ItemTimer, itemPeriod) {
 			g.itemTask()
 		}
+		moves = g.tick(&g.MoveTimer, 1)
+		blinks = g.tick(&g.BlinkTimer, 1)
+	}
+	if frozen || moves {
+		g.movementTask(in, frozen, drawing)
+	}
+	if !frozen && blinks {
+		g.barrierTask()
 	}
 
+	if g.Joe.Respawn() {
+		if g.Lives == 0 {
+			g.gameOver()
+			return
+		}
+		g.Lives--
+		g.respawn()
+	}
+}
+
+// movementTask moves Joe and the enemies ($88D1). While Joe is frozen
+// after a room change only his pause counts down.
+func (g *Game) movementTask(in joe.Input, frozen, drawing bool) {
 	before := g.Joe
+	if g.Descent {
+		in = descentInput(g.Joe.X)
+	}
 	g.Joe.Treasure, g.Joe.TimeUp = g.Treasure, g.TreasureTimer == 1
 	g.Joe.BarriersOff, g.Joe.FloorsGone = g.BarriersOff, g.FloorsGone
+	g.Joe.Autopilot = g.Descent
 	exit := g.Joe.Step(in, &g.Tiles, g.Rules.Joe)
+	if g.Descent && g.Col == pyramid.Centre && g.Joe.Sounds&(1<<sound.Land) != 0 {
+		// Landing in the starting room ends the descent ($8ABA). The game
+		// remembers Joe for respawning as he was before landing: it does
+		// so in the middle of handling it.
+		g.Descent = false
+		g.Entry = before
+	}
 	g.playJoeSounds()
 	if g.Joe.Redraw {
 		g.Joe.Redraw = false
@@ -360,18 +448,12 @@ func (g *Game) Step(in joe.Input) {
 	} else if !drawing {
 		g.Enemies.Counter++ // ticked by the frame interrupt ($A9E8)
 	}
-	if !frozen {
-		g.barrierTask()
-	}
+}
 
-	if g.Joe.Respawn() {
-		if g.Lives == 0 {
-			g.gameOver()
-			return
-		}
-		g.Lives--
-		g.respawn()
-	}
+// descentInput is the joystick the game holds for Joe during the descent
+// ($88E6): down, and towards the middle of the screen.
+func descentInput(x byte) joe.Input {
+	return joe.Input{Down: true, Right: x < 0x80, Left: x >= 0x80}
 }
 
 // respawnFreeze is how long the original stands still after a respawn
@@ -382,6 +464,7 @@ const respawnFreeze = 4
 
 // respawn puts Joe back as he entered the room, and reloads it.
 func (g *Game) respawn() {
+	sound.TurnOff(g.PSG) // $A06A
 	g.Joe = g.Entry
 	g.load()
 	g.syncWait = int(g.Rooms[g.Room].SyncDelay)

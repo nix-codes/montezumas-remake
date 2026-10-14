@@ -34,6 +34,7 @@ const (
 const (
 	Standing = 0
 	Walking  = 1
+	Pole     = 5
 	Falling  = 6
 	Dead     = 9
 )
@@ -46,12 +47,36 @@ type Game struct {
 // Start boots the cartridge, selects a level (1-3) and returns once Joe has
 // slid down the entrance pole and is standing in the starting room.
 func Start(romPath string, level int) (*Game, error) {
+	g, err := Boot(romPath, level)
+	if err != nil {
+		return nil, err
+	}
+	for f := 0; f < 1000; f++ {
+		if err := g.RunFrame(); err != nil {
+			return nil, err
+		}
+		if g.Peek(flagsVar)&0x04 == 0 {
+			for i := 0; i < 10; i++ { // let the landing settle
+				if err := g.RunFrame(); err != nil {
+					return nil, err
+				}
+			}
+			return g, nil
+		}
+	}
+	return nil, fmt.Errorf("Joe never reached the starting room")
+}
+
+// Boot boots the cartridge, selects a level (1-3) on the title screen and
+// returns as the level begins: the entrance hall drawn, Joe on its pole,
+// the game about to walk him into the pyramid.
+func Boot(romPath string, level int) (*Game, error) {
 	cart, err := os.ReadFile(romPath)
 	if err != nil {
 		return nil, err
 	}
 	m := coleco.New(cart)
-	for f := 0; f < 2000; f++ {
+	for f := 0; f < 1000; f++ {
 		m.Input = coleco.Joystick{Key: -1}
 		if f >= 160 && f <= 170 {
 			m.Input.Key = level
@@ -59,12 +84,8 @@ func Start(romPath string, level int) (*Game, error) {
 		if err := m.RunFrame(); err != nil {
 			return nil, err
 		}
-		if f > 200 && m.Peek(flagsVar)&0x04 == 0 {
-			for i := 0; i < 10; i++ { // let the landing settle
-				if err := m.RunFrame(); err != nil {
-					return nil, err
-				}
-			}
+		if m.Peek(flagsVar)&0x04 != 0 && m.Peek(joeState) == Pole {
+			m.Input.Key = -1
 			return &Game{m}, nil
 		}
 	}
