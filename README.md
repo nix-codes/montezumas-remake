@@ -97,8 +97,9 @@ cartridge; the last 4 KB can't be checked that way.
   openings and room 13's ladder up into room 7 have no matching opening on
   the far side; the game still moves Joe there.
 - The levels share the layouts except rooms 6, 7, 9 and 72.
-- Floor tiles Joe can stand on are listed at `$93FF`; other tile classes
-  are at `$9412`, `$943C` and `$A00E` (not yet identified).
+- Tile classes: floors Joe can stand on (`$93FF`), conveyors (`$9412`,
+  the first three push left, the rest right), walls that stop sideways
+  moves (`$943C`, enemies too) and tiles that kill him (`$A00E`).
 
 ### Joe
 
@@ -121,8 +122,8 @@ cartridge; the last 4 KB can't be checked that way.
   hurts. Poles (`$95`, state 5) are caught the same way and slid down at
   4 px/frame.
 - `internal/joe`'s comparison test runs 21 scenarios on both games and
-  checks Joe's position and state every frame. Not translated yet: dying
-  by touching enemies.
+  checks Joe's position and state every frame. Dying by touching enemies
+  is in `internal/play` (see Enemies).
 - After a room change the original pauses while it draws the new room:
   the main loop runs none of its tasks, and the frame interrupt does
   nothing. On the emulator that takes 3-10 frames depending on the room
@@ -147,10 +148,10 @@ cartridge; the last 4 KB can't be checked that way.
   first column.
 - The contact check (`$91E5`) runs in the main loop: an enemy kills Joe when
   their sprites are less than 13 lines and 8 pixels apart, unless his amulet
-  is active (or, not done yet, he has the sword). On the emulator it runs
-  every other frame, on positions from the end of the previous frame. The
-  enemy that killed him is gone after the respawn, until the room is
-  reloaded.
+  is active or he has the sword, which kills the enemy instead (see Items).
+  On the emulator it runs every other frame, on positions from the end of
+  the previous frame. The enemy that killed him is gone after the respawn,
+  until the room is reloaded.
 - `internal/enemy`'s tests move every room's enemies in both games for 300
   frames, and run Joe and the enemies together through a death, comparing
   every frame.
