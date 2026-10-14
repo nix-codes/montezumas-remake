@@ -16,7 +16,7 @@ compilable disassembly in
 ```bash
 make rom       # assemble original/ into build/montezuma.rom
 make extract   # write tiles.png, sprites.png and loader-calls.txt to assets/
-make rooms     # capture all rooms of levels 1-3 to assets/rooms/
+make rooms     # capture all rooms of levels 1-9 to assets/rooms/
 make run       # play the remake: 1-3 pick the level, arrows move, space/Z/X jump, Esc resets
 make original  # play the original ROM on the built-in emulator
 make test
@@ -96,7 +96,20 @@ cartridge; the last 4 KB can't be checked that way.
   ladder or rope (`$88/$89`, `$10/$11`, `$90`) at the top or bottom. 13 side
   openings and room 13's ladder up into room 7 have no matching opening on
   the far side; the game still moves Joe there.
-- The levels share the layouts except rooms 6, 7, 9 and 72.
+- Each room is a list of drawing commands, from `$9477[room]` up to the
+  next room's entry. The first byte's low 6 bits are the command and its
+  top 2 bits bits 8-9 of the name table offset (low 8 bits in the next
+  byte); `$9444` maps each command to a tile group in the pool at `$9FD1`
+  (a count, then tiles). `$3E`/`$3F` + room draws another room's list
+  first, plain or mirrored; `$0B` is a rope; other commands below `$20`
+  draw shapes (rectangles, ladders, lines; handlers at `$A20A`); `$20-$28`
+  are items (skipped once collected, `$70C0`), `$29-$2F` doors and `$30`
+  up enemies. The disassembly mislabels the loader as a sound routine.
+- `$10`/`$11` end a room's list below a level (`$71A6`): its top 2 bits
+  plus 2, or plus 6. The levels share most of the layouts; rooms gain
+  content (mostly enemies) on levels 2, 3, 4, 6, 7, 8 and 9, levels 4 and up
+  only reachable by finishing levels. `cmd/rooms` captures levels past 3
+  by starting on 3 and setting the level.
 - Tile classes: floors Joe can stand on (`$93FF`), conveyors (`$9412`,
   the first three push left, the rest right), walls that stop sideways
   moves (`$943C`, enemies too) and tiles that kill him (`$A00E`).
@@ -270,8 +283,7 @@ cartridge; the last 4 KB can't be checked that way.
   the screen.
 - Leaving the bottom while sliding down a pole starts the next level:
   harder (up to 9), every room reset, and Joe comes down the entrance
-  hall's pole on the side he left by (see Level start). Levels past 3 use
-  level 3's room data.
+  hall's pole on the side he left by (see Level start).
 - Setting up a new screen as Joe moves (leaving an edge, or the fast
   jump) runs the main loop past the end of the frame: the barrier task,
   last in the task table, runs at the start of the next frame, just

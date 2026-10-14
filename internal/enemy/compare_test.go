@@ -45,63 +45,68 @@ type frozen []byte
 
 func (f frozen) Tile(col, row int) byte { return f[row*32+col] }
 
-// TestMatchesOriginal moves the enemies of every room in both games for 300
-// frames, with Joe protected by his amulet, and compares their sprites
-// every frame. It stops early in a room where Joe dies (he starts mid-air
-// in some), since the original then reloads the room.
+// TestMatchesOriginal moves the enemies of every room, on levels 1 and 4,
+// in both games for 300 frames, with Joe protected by his amulet, and
+// compares their sprites every frame. It stops early in a room where Joe
+// dies (he starts mid-air in some), since the original then reloads the
+// room.
 func TestMatchesOriginal(t *testing.T) {
 	r := rules(t)
 	var short []string
 	defer func() {
 		if len(short) > 0 {
-			t.Logf("rooms where Joe died, compared up to the frame shown: %v", short)
+			t.Logf("rooms where Joe died (level:room@frame), compared up to the frame shown: %v", short)
 		}
 	}()
-	for room := 0; room < pyramid.Rooms; room++ {
-		g, err := original.Start(romPath, 1)
-		if err != nil {
-			t.Skip(err)
-		}
-		if err := g.LoadRoom(room); err != nil {
-			t.Fatal(err)
-		}
-		placeOnFloor(g)
-		// Let the original finish settling into the room; it pauses for a
-		// few frames after loading one.
-		for f := 0; f < 10; f++ {
-			g.Poke(amulet, 0xFF)
-			if err := g.Step(coleco.Joystick{}); err != nil {
+	// Level 4 adds enemies to many rooms.
+	for _, level := range []int{1, 4} {
+		for room := 0; room < pyramid.Rooms; room++ {
+			g, err := original.Start(romPath, min(level, 3))
+			if err != nil {
+				t.Skip(err)
+			}
+			g.SetLevel(level)
+			if err := g.LoadRoom(room); err != nil {
 				t.Fatal(err)
 			}
-		}
-		g.Poke(amulet, 0xFF)
-		s := stateFrom(g, r)
-		if len(s.Objects) == 0 {
-			continue
-		}
-		for f := 0; f < 300; f++ {
-			tiles := make([]byte, 768)
-			copy(tiles, g.VDP.NameTable())
-			parity := (g.Peek(0x70AB) - 1) & 3
-			if err := g.Step(coleco.Joystick{}); err != nil {
-				t.Fatal(err)
+			placeOnFloor(g)
+			// Let the original finish settling into the room; it pauses for a
+			// few frames after loading one.
+			for f := 0; f < 10; f++ {
+				g.Poke(amulet, 0xFF)
+				if err := g.Step(coleco.Joystick{}); err != nil {
+					t.Fatal(err)
+				}
 			}
 			g.Poke(amulet, 0xFF)
-			if g.Joe().State >= 8 {
-				short = append(short, fmt.Sprintf("%d@%d", room, f))
-				break
+			s := stateFrom(g, r)
+			if len(s.Objects) == 0 {
+				continue
 			}
-			s.Counter++ // the frame interrupt's tick
-			s.Update(frozen(tiles), parity, true)
-			for _, o := range s.Objects {
-				slot := int(o[0] & 7)
-				got := *s.Sprites[slot]
-				b := g.Bytes(uint16(original.SpriteTable+4*slot), 4)
-				want := enemy.Sprite{Y: b[0], X: b[1], Pattern: b[2], Colour: b[3]}
-				if got != want {
-					t.Errorf("room %d frame %d slot %d: remake %s, original %s", room, f, slot, show(got), show(want))
-					f = 300
+			for f := 0; f < 300; f++ {
+				tiles := make([]byte, 768)
+				copy(tiles, g.VDP.NameTable())
+				parity := (g.Peek(0x70AB) - 1) & 3
+				if err := g.Step(coleco.Joystick{}); err != nil {
+					t.Fatal(err)
+				}
+				g.Poke(amulet, 0xFF)
+				if g.Joe().State >= 8 {
+					short = append(short, fmt.Sprintf("%d:%d@%d", level, room, f))
 					break
+				}
+				s.Counter++ // the frame interrupt's tick
+				s.Update(frozen(tiles), parity, true)
+				for _, o := range s.Objects {
+					slot := int(o[0] & 7)
+					got := *s.Sprites[slot]
+					b := g.Bytes(uint16(original.SpriteTable+4*slot), 4)
+					want := enemy.Sprite{Y: b[0], X: b[1], Pattern: b[2], Colour: b[3]}
+					if got != want {
+						t.Errorf("level %d room %d frame %d slot %d: remake %s, original %s", level, room, f, slot, show(got), show(want))
+						f = 300
+						break
+					}
 				}
 			}
 		}

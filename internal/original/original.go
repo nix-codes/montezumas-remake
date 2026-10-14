@@ -18,6 +18,7 @@ const (
 	rowVar   = 0x71A7
 	colVar   = 0x71A8
 	roomVar  = 0x7015 // room number computed by the loader
+	levelVar = 0x71A6 // the level, from 1
 	flagsVar = 0x705F // bit 2 is set while Joe descends the entrance pole
 
 	// The game's local sprite table (address in the cartridge header). Joe
@@ -164,6 +165,11 @@ func (g *Game) SetRoomColours(lit bool) error {
 
 // Room returns the current room number.
 func (g *Game) Room() int { return int(g.Peek(roomVar)) }
+
+// SetLevel sets the level. The title screen offers levels 1-3, and each
+// finished level adds one, up to 9; the room loader leaves out parts of
+// some rooms below a given level.
+func (g *Game) SetLevel(level int) { g.Poke(levelVar, byte(level)) }
 
 // Joe is Panama Joe's state.
 type Joe struct {

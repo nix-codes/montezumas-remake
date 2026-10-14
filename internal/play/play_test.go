@@ -147,7 +147,7 @@ func TestKeyStaysCollected(t *testing.T) {
 // can stand Joe, and that he stays there: no falling, no leaving the room.
 // (An enemy may still reach him; that's not checked.)
 func TestTeleport(t *testing.T) {
-	for level := 1; level <= 3; level++ {
+	for level := 1; level <= 9; level++ {
 		rooms, err := roomdata.Load(fmt.Sprintf("../../assets/rooms/level%d/rooms.json", level))
 		if err != nil {
 			t.Skip(err)

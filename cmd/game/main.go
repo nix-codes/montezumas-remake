@@ -79,11 +79,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	// Rooms for each level; levels past 3 use level 3's (the original's
-	// rooms differ between levels only in a few details).
+	// Rooms for each level (the original's rooms differ between levels
+	// only in a few details).
 	levels := map[int][]roomdata.Room{}
 	levelRooms := func(level int) []roomdata.Room {
-		level = min(level, 3)
 		if levels[level] == nil {
 			rooms, err := roomdata.Load(filepath.Join(*roomsDir, fmt.Sprintf("level%d", level), "rooms.json"))
 			if err != nil {

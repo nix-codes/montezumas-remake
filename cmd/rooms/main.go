@@ -59,7 +59,7 @@ type (
 
 func main() {
 	romPath := flag.String("rom", "build/montezuma.rom", "assembled ROM")
-	level := flag.Int("level", 1, "level to select on the title screen (1-3)")
+	level := flag.Int("level", 1, "level (1-9); levels past 3 start on 3, as if reached by finishing levels")
 	outDir := flag.String("out", "assets/rooms", "output directory")
 	flag.Parse()
 
@@ -81,10 +81,11 @@ func main() {
 	for n := range rooms {
 		// Start each room from a fresh game, so one room's state (Joe
 		// falling or dying, say) can't affect the next.
-		g, err := original.Start(*romPath, *level)
+		g, err := original.Start(*romPath, min(*level, 3))
 		if err != nil {
 			log.Fatal(err)
 		}
+		g.SetLevel(*level)
 		// Rooms mirrored from another ($AB29) leave a tile in the
 		// frame-sync byte; read it as the mirroring finishes.
 		var sync byte
