@@ -183,6 +183,24 @@ cartridge; the last 4 KB can't be checked that way.
   `LD A,n` selects the table. `assets/loader-calls.txt` lists every call site.
 - Some tiles (the BIOS font loaded by `LOAD_ASCII`) come from the console BIOS
   ROM, which is not included, so those slots are blank.
+- Tile animation never touches the screen. At boot (`$81DC`) the game fills
+  four tile pattern tables (`$0000`, `$0800`, `$1000`, `$2800`), each with
+  the main tileset (`$83A1`), its own frame of fire, conveyors and a few
+  others (`$8262`, `$81E5`, `$8206`, `$8233`) and their mirror images
+  (`$8314`). The frame interrupt (`$A9F3`) points VDP register 4 at the next
+  one, but only after the item task has run (it clears bit 7 of `$7011`),
+  so a step every 4 frames, and none while Joe lies dead from a fall. Each
+  step also rewrites the barrier (`$E0`) and disappearing floor (`$E8`)
+  patterns in all four tables (`$A92F`) from `$7096`, which the contact
+  task steps every other run (`$92D1`). The tables are the same in every
+  room; `internal/gfx` builds them from the ROM.
+- Barriers and disappearing floors blink through colour entries 28 and 29
+  (`$40` shown, `$00` hidden), from a main-loop task run every frame
+  (`$A8D6`): of each 96 frames the floors are gone for 24 and the barriers
+  off for 48, flagged in `$7000` bits 6 and 5. Joe's zap check (`$8D9B`)
+  ignores barriers that are off, and the floor check (`$9122`) only counts
+  `$E8` while it's shown. Room loads don't touch these entries, and the
+  counters run on from boot.
 - Sprite colours are set at run time, so sprites are drawn in white.
 - The extracted graphics are the original game's assets: fine for personal
   use, not for redistribution.

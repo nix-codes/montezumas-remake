@@ -40,6 +40,7 @@ type window struct {
 	drawn      [24][32]byte // the screen the background shows
 	drawnRoom  int
 	drawnCols  [32]byte
+	drawnPats  [256 * 8]byte
 	title      string
 
 	frame      int
@@ -159,16 +160,17 @@ func (w *window) teleport(room int) {
 func (w *window) Draw(screen *ebiten.Image) {
 	g := w.g
 	rg := w.roomGfx(g.Room)
-	if s, c := g.Display(), g.Colours(); s != w.drawn || g.Room != w.drawnRoom || c != w.drawnCols {
+	s, c, p := g.Display(), g.Colours(), g.Patterns()
+	if s != w.drawn || g.Room != w.drawnRoom || c != w.drawnCols || p != w.drawnPats {
 		backdrop := g.Backdrop()
-		rg.vram.Colours = c
+		rg.vram.Colours, rg.vram.TilePatterns = c, p
 		for y := range s {
 			for x, t := range s[y] {
 				rg.vram.DrawTile(w.pixels, int(t), x*8, y*8, backdrop)
 			}
 		}
 		w.background.WritePixels(w.pixels.Pix)
-		w.drawn, w.drawnRoom, w.drawnCols = s, g.Room, c
+		w.drawn, w.drawnRoom, w.drawnCols, w.drawnPats = s, g.Room, c, p
 	}
 	screen.DrawImage(w.background, nil)
 

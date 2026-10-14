@@ -85,10 +85,26 @@ func (g *Game) Dark() bool {
 	return !g.Treasure && g.Row >= 9-g.Level && !g.Inventory.Has(items.Torch)
 }
 
-// Colours returns the room's tile colour table, darkened if it's dark.
+// Colour entries the barrier task sets ($A8D6): barriers ($E0-$E7) and
+// disappearing floors ($E8-$EF), dark blue when shown.
+const (
+	barrierEntry = 28
+	floorEntry   = 29
+	barrierShown = 0x40
+)
+
+// Colours returns the room's tile colour table, darkened if it's dark,
+// with the barriers and disappearing floors as they blink.
 func (g *Game) Colours() [32]byte {
 	var c [32]byte
 	copy(c[:], g.Rooms[g.Room].TileColours)
+	c[barrierEntry], c[floorEntry] = barrierShown, barrierShown
+	if g.BarriersOff {
+		c[barrierEntry] = 0
+	}
+	if g.FloorsGone {
+		c[floorEntry] = 0
+	}
 	if g.Dark() {
 		for _, e := range darkEntries {
 			c[e] = 0

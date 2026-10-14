@@ -26,6 +26,11 @@ const (
 	itemTimer    = 0x7012
 	parity       = 0x70AB
 	fireLatch    = 0x7075
+	flags        = 0x7000 // bit 5: barriers off; bit 6: disappearing floors gone
+	animStep     = 0x7011
+	chainFrame   = 0x7096
+	chainToggle  = 0x7098
+	barrierTimer = 0x70A8
 )
 
 type scenario struct {
@@ -72,6 +77,15 @@ var scenarios = []scenario{
 		[]byte{items.Sword, items.Sword, items.Sword, items.Sword, items.Sword}, 40,
 		func(f int) joe.Input { return joe.Input{Fire: f == 1} },
 		expect(func(g *play.Game) bool { return g.Score == 0 && g.Tiles.T[11][5] == 0x70 })},
+	// The barriers start off, turning on 17 frames in.
+	{"walk through a barrier while it's off", 10, 165, 53, nil, 20, hold(joe.Input{Right: true}),
+		expect(func(g *play.Game) bool { return g.Joe.State == joe.Walking && g.Joe.X > 190 })},
+	{"walk into a barrier while it's on", 10, 165, 53, nil, 60,
+		func(f int) joe.Input { return joe.Input{Right: f >= 20} },
+		expect(func(g *play.Game) bool { return g.Joe.State == joe.Zapped && !g.BarriersOff })},
+	// The disappearing floors go 64 frames in.
+	{"a disappearing floor drops Joe", 5, 37, 53, nil, 100, hold(joe.Input{}),
+		expect(func(g *play.Game) bool { return g.Joe.ScreenY() > 53 })},
 }
 
 func expect(ok func(g *play.Game) bool) func(g *play.Game) string {
@@ -168,6 +182,16 @@ func sync(g *play.Game, o *original.Game) {
 	g.ItemTimer = int(o.Peek(itemTimer))
 	g.Enemies.Counter = o.Peek(original.FrameCounter)
 	g.Random = uint16(o.Peek(0x7047)) | uint16(o.Peek(0x7048))<<8
+	g.AnimStep, g.ChainFrame, g.ChainToggle = o.Peek(animStep), o.Peek(chainFrame), o.Peek(chainToggle)
+	g.BarrierTimer = o.Peek(barrierTimer)
+	g.BarriersOff, g.FloorsGone = o.Peek(flags)&0x20 != 0, o.Peek(flags)&0x40 != 0
+	// The barrier frame on screen isn't kept in RAM: find it.
+	for f := range byte(4) {
+		g.ChainShown = f
+		if p := g.Patterns(); string(p[0xE0*8:0xE0*8+8]) == string(o.VDP.TilePatterns()[0xE0*8:0xE0*8+8]) {
+			break
+		}
+	}
 	for i := range g.Enemies.Sprites {
 		b := o.Bytes(uint16(original.SpriteTable+4*i), 4)
 		*g.Enemies.Sprites[i] = struct{ Y, X, Pattern, Colour byte }{b[0], b[1], b[2], b[3]}
@@ -185,6 +209,21 @@ func compare(g *play.Game, o *original.Game, tiles bool) string {
 	}
 	if got, want := g.Score, bcd(o.Bytes(score, 3)); got != want {
 		return fmt.Sprintf("score: remake %d, original %d", got, want)
+	}
+	if tiles {
+		if got, want := g.Patterns(), o.VDP.TilePatterns(); string(got[:]) != string(want) {
+			for t := range 256 {
+				if string(got[t*8:t*8+8]) != string(want[t*8:t*8+8]) {
+					return fmt.Sprintf("pattern of tile %02X: remake % X, original % X", t, got[t*8:t*8+8], want[t*8:t*8+8])
+				}
+			}
+		}
+		got, want := g.Colours(), o.VDP.TileColours()
+		for _, e := range []int{28, 29} {
+			if got[e] != want[e] {
+				return fmt.Sprintf("colour entry %d: remake %02X, original %02X", e, got[e], want[e])
+			}
+		}
 	}
 	screen := g.Display()
 	names := o.VDP.NameTable()
@@ -324,6 +363,7 @@ func TestColours(t *testing.T) {
 				if torch {
 					g.Inventory[0] = items.Torch
 				}
+				g.BarriersOff, g.FloorsGone = o.Peek(flags)&0x20 != 0, o.Peek(flags)&0x40 != 0
 				if g.Dark() {
 					dark++
 				}

@@ -36,6 +36,7 @@ const (
 	tilePole        = 0x95
 	tileRopeTop     = 0xC4
 	tileZap         = 0xE0
+	tileDisappear   = 0xE8 // a floor while it's shown
 	tileRopeEnd1    = 0x98 // with tileEmpty: nothing to hold below a rope
 	tileRopeEnd2    = 0xD8
 )
@@ -84,6 +85,10 @@ type Joe struct {
 	// Set by the game: Joe is in the treasure room below the pyramid
 	// ($705F bit 5), and its time is up ($70AC is 1).
 	Treasure, TimeUp bool
+	// Set by the game: the blinking barriers are off ($7000 bit 5), so
+	// they can't zap him, and the disappearing floors ($E8) are gone
+	// ($7000 bit 6), so they don't hold him.
+	BarriersOff, FloorsGone bool
 	// Set by Step when Joe jumps off a chain after the treasure room's time
 	// is up: the game redraws the screen ($705F bit 3).
 	Redraw bool
@@ -186,7 +191,8 @@ func (j *Joe) Step(in Input, t Tiles, r *Rules) (exit int) {
 
 // move applies this frame's velocity ($8D80-$8DE7). A wall at body height
 // in the direction he's going stops him sideways for this frame, and for
-// good unless he's rising. Touching a $E0 tile kills him.
+// good unless he's rising. Touching a $E0 tile kills him, unless the
+// barriers are off.
 func (j *Joe) move(b buffer, r *Rules) {
 	if j.DX != 0 || j.DY != 0 {
 		j.AnimTick++
@@ -201,7 +207,7 @@ func (j *Joe) move(b buffer, r *Rules) {
 			j.DX = 0
 		}
 		dx = 0
-	} else if b[1] == tileZap && j.State < Zapped {
+	} else if b[1] == tileZap && !j.BarriersOff && j.State < Zapped {
 		j.die(Zapped)
 	}
 	j.X += byte(dx)
@@ -266,11 +272,14 @@ func (j *Joe) commit(state int, dx, dy int8, b buffer, r *Rules) {
 }
 
 // floor reports whether Joe can stand on t ($9122), and whether it burns.
-func floor(t byte, r *Rules) (ok, fire bool) {
+func (j *Joe) floor(t byte, r *Rules) (ok, fire bool) {
 	for _, f := range r.Floors {
 		if f == t {
 			return true, false
 		}
+	}
+	if t == tileDisappear {
+		return !j.FloorsGone, false
 	}
 	for _, h := range r.Hazards {
 		if h == t {
@@ -357,7 +366,7 @@ func (j *Joe) standing(in Input, b buffer, r *Rules) {
 		j.jump(dx, b, r)
 		return
 	}
-	if ok, _ := floor(b[4], r); !ok {
+	if ok, _ := j.floor(b[4], r); !ok {
 		j.FallStart = j.RawY
 		j.commit(Falling, dx, 0, b, r)
 		return
@@ -423,7 +432,7 @@ func (j *Joe) grab(t byte, b buffer, r *Rules) bool {
 
 // falling handles states 5 and 6 ($8A83), and the falling half of a jump.
 func (j *Joe) falling(dx, dy int8, b buffer, r *Rules) {
-	ok, fire := floor(b[4], r)
+	ok, fire := j.floor(b[4], r)
 	if !ok {
 		if !j.grab(b[4], b, r) {
 			j.commit(j.State, dx, dy, b, r)
@@ -468,7 +477,7 @@ func (j *Joe) ladder(in Input, b buffer, r *Rules) {
 		j.fall(b, r)
 		return
 	}
-	if ok, _ := floor(b[4], r); ok {
+	if ok, _ := j.floor(b[4], r); ok {
 		j.fall(b, r) // reached a floor: let go and land
 		return
 	}
@@ -513,7 +522,7 @@ func (j *Joe) rope(in Input, b buffer, r *Rules) {
 		case in.Up:
 			j.fall(b, r) // let go ($8CC5)
 		case in.Down:
-			if ok, _ := floor(b[4], r); ok {
+			if ok, _ := j.floor(b[4], r); ok {
 				j.commit(Rope, 0, 1, b, r)
 			} else {
 				j.fall(b, r)
@@ -545,7 +554,7 @@ func (j *Joe) ropeBottom(in Input, b buffer, r *Rules) {
 		j.commit(Falling, 0, 0, b, r)
 		return
 	default:
-		if ok, _ := floor(t, r); ok {
+		if ok, _ := j.floor(t, r); ok {
 			j.fall(b, r) // feet on a floor: let go and land
 			return
 		}

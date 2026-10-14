@@ -5,6 +5,7 @@ package play
 
 import (
 	"montezuma-remake/internal/enemy"
+	"montezuma-remake/internal/gfx"
 	"montezuma-remake/internal/items"
 	"montezuma-remake/internal/joe"
 	"montezuma-remake/internal/pyramid"
@@ -26,12 +27,13 @@ const (
 	itemPeriod    = 4
 )
 
-// Rules are the original's tables, and the ROM itself, which the treasure
-// room reads for random numbers.
+// Rules are the original's tables, its animated tile patterns, and the ROM
+// itself, which the treasure room reads for random numbers.
 type Rules struct {
 	Joe   *joe.Rules
 	Enemy *enemy.Rules
 	Items *items.Rules
+	Anim  *gfx.Animation
 	ROM   *rom.ROM
 }
 
@@ -49,7 +51,11 @@ func RulesFromROM(r *rom.ROM) (*Rules, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Rules{Joe: j, Enemy: e, Items: i, ROM: r}, nil
+	a, err := gfx.NewAnimation(r)
+	if err != nil {
+		return nil, err
+	}
+	return &Rules{Joe: j, Enemy: e, Items: i, Anim: a, ROM: r}, nil
 }
 
 // Game is a game in progress.
@@ -92,6 +98,21 @@ type Game struct {
 
 	// Main-loop task countdowns: a task runs when its count is 1.
 	ContactTimer, ItemTimer int
+
+	// Tile animation; these run on from boot, never reset. The frame
+	// interrupt steps through the pattern tables ($7011: 1-3 and 0, bit 7
+	// set after a step until the item task clears it); the barrier and
+	// disappearing floor patterns follow a frame counter ($7096, 3 down to
+	// 0) the contact task steps every other run ($7098), as it stood at
+	// the last table step. The barrier task ($A8D6) counts BarrierTimer
+	// ($70A8) down from $60 and blinks the barriers and floors.
+	AnimStep     byte
+	ChainFrame   byte
+	ChainToggle  byte
+	ChainShown   byte
+	BarrierTimer byte
+	BarriersOff  bool // $7000 bit 5: hidden and harmless
+	FloorsGone   bool // $7000 bit 6
 }
 
 // Screen is the current room's tiles as items change them. Version goes up
@@ -200,6 +221,7 @@ func (g *Game) Step(in joe.Input) {
 		}
 	}
 	g.Random++
+	g.stepAnimation()
 	if g.tick(&g.ContactTimer, contactPeriod) {
 		g.contactTask()
 	}
@@ -210,6 +232,7 @@ func (g *Game) Step(in joe.Input) {
 	frozen := g.Joe.Frozen > 0 // the pause while a new room is drawn
 	before := g.Joe
 	g.Joe.Treasure, g.Joe.TimeUp = g.Treasure, g.TreasureTimer == 1
+	g.Joe.BarriersOff, g.Joe.FloorsGone = g.BarriersOff, g.FloorsGone
 	exit := g.Joe.Step(in, &g.Tiles, g.Rules.Joe)
 	if g.Joe.Redraw {
 		g.Joe.Redraw = false
@@ -221,6 +244,7 @@ func (g *Game) Step(in joe.Input) {
 		g.Enemies.Counter++
 		g.Enemies.Update(&g.Tiles, g.Joe.Parity, g.Amulet > 0)
 	}
+	g.barrierTask()
 
 	if g.Joe.Respawn() {
 		g.Lives--
@@ -253,12 +277,17 @@ func (g *Game) contactTask() {
 		return
 	}
 	if g.Amulet > 0 {
-		if g.Amulet--; g.Amulet > 0 {
-			return
-		}
+		g.Amulet--
 	}
-	if g.Inventory.Remove(items.Amulet) {
+	if g.Amulet == 0 && g.Inventory.Remove(items.Amulet) {
 		g.RedrawHUD()
+	}
+	// Step the barrier pattern every other run ($92D1).
+	if g.ChainToggle ^= 0x80; g.ChainToggle == 0 {
+		g.ChainFrame = (g.ChainFrame - 1) & 3
+	}
+	if g.Amulet > 0 {
+		return
 	}
 
 	slot, entry := g.Enemies.Touching(g.Joe.X, g.Joe.RawY, g.Contacts)
@@ -280,8 +309,14 @@ func (g *Game) contactTask() {
 	g.Joe.Kill()
 }
 
-// itemTask is the original's $8F5F: doors, creatures and pickups.
+// itemTask is the original's $8F5F: doors, creatures and pickups. It
+// also lets the frame interrupt take the next animation step, unless Joe
+// has fallen to his death.
 func (g *Game) itemTask() {
+	if g.Joe.State == joe.Dead {
+		return
+	}
+	g.AnimStep ^= 0x80
 	res := g.Rules.Items.Task(g.itemRoom(), items.Joe{
 		X:          g.Joe.X,
 		RawY:       g.Joe.RawY,
@@ -340,4 +375,42 @@ func (g *Game) changeRoom(exit int, before joe.Joe) {
 	}
 	g.Row, g.Col = row, col
 	g.show(next)
+}
+
+// stepAnimation is the frame interrupt's animation step ($A9F3): show the
+// next pattern table, unless the item task hasn't run since the last step,
+// and redraw the barrier and floor patterns ($A92F).
+func (g *Game) stepAnimation() {
+	a := g.AnimStep + 1
+	if a&0x80 != 0 {
+		return
+	}
+	if a == 4 {
+		a = 0
+	}
+	g.AnimStep = a ^ 0x80
+	g.ChainShown = g.ChainFrame
+}
+
+// barrierTask is the original's $A8D6, run every frame: of each 96, the
+// disappearing floors are gone for 24 and the barriers off for 48.
+func (g *Game) barrierTask() {
+	if g.BarrierTimer--; g.BarrierTimer == 0 {
+		g.BarrierTimer = 0x60
+	}
+	switch g.BarrierTimer {
+	case 0x60:
+		g.FloorsGone, g.BarriersOff = true, true
+	case 0x48:
+		g.FloorsGone = false
+	case 0x30:
+		g.BarriersOff = false
+	}
+}
+
+// Patterns returns the tile patterns the screen shows now: the pattern
+// table the animation has reached, with the barrier and floor frame.
+func (g *Game) Patterns() [256 * 8]byte {
+	table := int(g.AnimStep&0x7F+3) % 4
+	return g.Rules.Anim.Patterns(g.Rooms[g.Room].TilePatterns, table, g.ChainShown)
 }
