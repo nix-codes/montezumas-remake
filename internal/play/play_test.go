@@ -1,6 +1,7 @@
 package play
 
 import (
+	"fmt"
 	"testing"
 
 	"montezuma-remake/internal/items"
@@ -139,5 +140,32 @@ func TestKeyStaysCollected(t *testing.T) {
 	if g.Tiles.T[11][5] != 0 || g.Inventory[0] != items.KeyRed {
 		t.Errorf("key tile %02X, inventory % X; want the key gone from the room and still carried",
 			g.Tiles.T[11][5], g.Inventory)
+	}
+}
+
+// TestTeleport checks every room of every level has somewhere Teleport
+// can stand Joe, and that he stays there: no falling, no leaving the room.
+// (An enemy may still reach him; that's not checked.)
+func TestTeleport(t *testing.T) {
+	for level := 1; level <= 3; level++ {
+		rooms, err := roomdata.Load(fmt.Sprintf("../../assets/rooms/level%d/rooms.json", level))
+		if err != nil {
+			t.Skip(err)
+		}
+		g := testGame(t, pyramid.Start, StartX, StartY)
+		g.Rooms = rooms
+		for room := range rooms {
+			g.Teleport(room)
+			if _, _, ok := g.SafeSpot(); !ok {
+				t.Errorf("level %d room %d: nowhere to stand", level, room)
+				continue
+			}
+			y := g.Joe.ScreenY()
+			run(g, 20, joe.Input{})
+			if g.Room != room || g.Joe.State != joe.Zapped && (g.Joe.State > joe.Walking || g.Joe.ScreenY() != y) {
+				t.Errorf("level %d room %d: Joe moved: room %d, state %d, y %d from %d",
+					level, room, g.Room, g.Joe.State, g.Joe.ScreenY(), y)
+			}
+		}
 	}
 }

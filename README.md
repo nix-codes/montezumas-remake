@@ -26,7 +26,8 @@ make test
 (press 1, 2 or 3 on the title screen to pick a level).
 
 `go run ./cmd/game -room N` starts in room N; `-screenshot out.png` saves an
-early frame and exits.
+early frame and exits. Jumping to a room (PageUp/PageDown or `-room`) stands
+Joe on a floor spot away from its enemies, and he respawns there.
 
 The first 8 KB of the assembled ROM matches MAME's checksum for the original
 cartridge; the last 4 KB can't be checked that way.

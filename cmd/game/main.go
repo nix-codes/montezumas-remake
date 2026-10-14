@@ -2,7 +2,7 @@
 // game in a window and feeds it the keyboard.
 //
 // Keys: arrows move and climb; space, Z or X jump. PageUp/PageDown jump to
-// the previous or next room, for testing.
+// the previous or next room, for testing, standing Joe somewhere safe.
 package main
 
 import (
@@ -89,6 +89,9 @@ func main() {
 
 	g := play.New(rooms, rules, 1, *startRoom)
 	g.LevelRooms = levelRooms
+	if *startRoom != pyramid.Start {
+		g.Teleport(*startRoom)
+	}
 	w := &window{
 		g:          g,
 		gfx:        map[int]*roomGfx{},
@@ -130,9 +133,9 @@ func (w *window) Update() error {
 	g := w.g
 	switch {
 	case inpututil.IsKeyJustPressed(ebiten.KeyPageDown):
-		w.teleport((g.Room + 1) % len(g.Rooms))
+		g.Teleport((g.Room + 1) % len(g.Rooms))
 	case inpututil.IsKeyJustPressed(ebiten.KeyPageUp):
-		w.teleport((g.Room + len(g.Rooms) - 1) % len(g.Rooms))
+		g.Teleport((g.Room + len(g.Rooms) - 1) % len(g.Rooms))
 	}
 	g.Step(joe.Input{
 		Left:  ebiten.IsKeyPressed(ebiten.KeyArrowLeft),
@@ -148,13 +151,6 @@ func (w *window) Update() error {
 		w.title = t
 	}
 	return nil
-}
-
-// teleport moves to room for testing, with Joe standing where he was.
-func (w *window) teleport(room int) {
-	x, y := w.g.Joe.X, w.g.Joe.ScreenY()
-	w.g.Joe.Place(int(x), y)
-	w.g.Enter(room)
 }
 
 func (w *window) Draw(screen *ebiten.Image) {

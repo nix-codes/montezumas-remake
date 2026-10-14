@@ -160,6 +160,83 @@ func (g *Game) Enter(room int) {
 	g.show(room)
 }
 
+// Teleport enters room for testing, standing Joe on the floor spot
+// farthest from its enemies (see SafeSpot), where he also respawns. With
+// no such spot, he keeps his place on screen.
+func (g *Game) Teleport(room int) {
+	g.Joe.Place(int(g.Joe.X), g.Joe.ScreenY())
+	g.Enter(room)
+	if x, y, ok := g.SafeSpot(); ok {
+		g.Joe.Place(x, y)
+		g.Entry = g.Joe
+	}
+}
+
+// SafeSpot finds where Joe can stand in the current room, as far as
+// possible from every enemy, preferring floors the enemies aren't on: on
+// three tiles of plain floor (no edge, conveyor, disappearing floor or
+// fire) under three empty rows, or failing that on any floor under his
+// feet with two empty rows above. It returns his position for Place.
+func (g *Game) SafeSpot() (x, y int, ok bool) {
+	if x, y, ok = g.safeSpot(true); !ok {
+		x, y, ok = g.safeSpot(false)
+	}
+	return x, y, ok
+}
+
+func (g *Game) safeSpot(strict bool) (x, y int, ok bool) {
+	r := g.Rules.Joe
+	plain := func(t byte) bool {
+		if !contains(r.Floors, t) {
+			return false
+		}
+		return !strict || !contains(r.Conveyors, t)
+	}
+	width, height := 1, 3
+	if !strict {
+		width, height = 0, 2
+	}
+	best := -1
+	for row := 8; row < 24; row++ {
+		// Columns 1 and 30 are past where Joe leaves the room.
+		for col := 2; col < 30; col++ {
+			fits := true
+			for c := col - width; c <= col+width && fits; c++ {
+				fits = plain(g.Tiles.T[row][c])
+				for above := row - height; above < row && fits; above++ {
+					fits = g.Tiles.T[above][c] == 0
+				}
+			}
+			if !fits {
+				continue
+			}
+			// Joe's body sprite stands 19 lines above the floor.
+			px, py := col*8-5, row*8-19
+			dist := 1 << 20
+			for _, o := range g.Enemies.Objects {
+				s := g.Enemies.Sprites[o[0]&7]
+				// An enemy on another floor takes much longer to reach
+				// him than one on his.
+				dx, dy := px-int(s.X), 4*(py-int(s.Y)-1)
+				dist = min(dist, dx*dx+dy*dy)
+			}
+			if dist > best {
+				best, x, y, ok = dist, px, py, true
+			}
+		}
+	}
+	return x, y, ok
+}
+
+func contains(list []byte, t byte) bool {
+	for _, b := range list {
+		if b == t {
+			return true
+		}
+	}
+	return false
+}
+
 // show switches to room, keeping the current row and column, and remembers
 // Joe as he comes in, as the original does for respawning.
 func (g *Game) show(room int) {
