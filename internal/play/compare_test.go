@@ -291,7 +291,7 @@ func compare(g *play.Game, o *original.Game, tiles bool) string {
 			}
 		}
 		got, want := g.Colours(), o.VDP.TileColours()
-		for _, e := range []int{28, 29} {
+		for _, e := range []int{20, 28, 29} {
 			if got[e] != want[e] {
 				return fmt.Sprintf("colour entry %d: remake %02X, original %02X", e, got[e], want[e])
 			}

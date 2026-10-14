@@ -46,6 +46,7 @@ func (g *Game) enterBelow(row, col int) {
 	g.Row, g.Col = row, col
 	g.Room = treasureRoom
 	g.Entry = g.Joe
+	g.entered = true
 	// No room is loaded: the pause is the single frame the new screen
 	// takes to set up.
 	g.Joe.Frozen = 0

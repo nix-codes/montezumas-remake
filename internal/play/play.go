@@ -86,6 +86,14 @@ type Game struct {
 
 	Inventory items.Inventory
 	Amulet    int                   // contact checks left of the amulet's protection
+	// CreatureColour is the creatures' colour entry (20) as the amulet
+	// last set it: grey while it protects Joe, then dark green. 0 for the
+	// room's own colour, which the frame interrupt puts back ($8EB0) when
+	// recolour is set: when Joe picks something up, or once the main loop
+	// runs again after he enters a room (entered) and saves him ($8E7E).
+	CreatureColour byte
+	recolour       bool
+	entered        bool
 	Done      [pyramid.Rooms]uint16 // per room, one bit per contact entry: collected, opened, removed
 
 	Enemies  *enemy.State
@@ -183,6 +191,7 @@ func (g *Game) Restart(room int) {
 	g.Treasure = false
 	g.Inventory = items.NewInventory()
 	g.Amulet = 0
+	g.CreatureColour, g.recolour, g.entered = 0, false, false
 	g.Done = [pyramid.Rooms]uint16{}
 	g.ContactTimer, g.ItemTimer = contactPeriod, itemPeriod
 	g.MoveTimer, g.BlinkTimer = 1, 1
@@ -303,6 +312,7 @@ func contains(list []byte, t byte) bool {
 func (g *Game) show(room int) {
 	g.Room = room
 	g.Entry = g.Joe
+	g.entered = true
 	g.load()
 	// The original loads the room on the frame after Joe leaves the old
 	// one, and the loader turns the sound off ($A06A); an effect that's
@@ -384,12 +394,20 @@ func (g *Game) Step(in joe.Input) {
 	frozen := g.Joe.Frozen > 0
 	drawing := g.Joe.Frozen > g.syncWait
 	if !drawing {
+		if g.recolour {
+			g.recolour = false
+			g.CreatureColour = 0
+		}
 		g.Random++
 		g.stepAnimation()
 		g.Sound.Tick(g.PSG)
 	}
 	moves, blinks := true, true
 	if !frozen {
+		if g.entered {
+			g.entered = false
+			g.recolour = true
+		}
 		if g.tick(&g.ContactTimer, contactPeriod) {
 			g.contactTask()
 		}
@@ -433,6 +451,7 @@ func (g *Game) movementTask(in joe.Input, frozen, drawing bool) {
 		// so in the middle of handling it.
 		g.Descent = false
 		g.Entry = before
+		g.recolour = true
 	}
 	g.playJoeSounds()
 	if g.Joe.Redraw {
@@ -538,11 +557,16 @@ func (g *Game) contactTask() {
 	if g.Joe.State >= joe.Zapped {
 		return
 	}
-	if g.Amulet > 0 {
+	switch {
+	case g.Amulet > 1:
 		g.Amulet--
-	}
-	if g.Amulet == 0 && g.Inventory.Remove(items.Amulet) {
-		g.RedrawHUD()
+		g.CreatureColour = creaturesProtected
+	case g.Amulet == 1:
+		g.Amulet = 0
+		g.CreatureColour = creaturesAfter
+		if g.Inventory.Remove(items.Amulet) {
+			g.RedrawHUD()
+		}
 	}
 	// Step the barrier pattern every other run ($92D1).
 	if g.ChainToggle ^= 0x80; g.ChainToggle == 0 {
@@ -592,6 +616,7 @@ func (g *Game) itemTask() {
 		g.Sound.Play(sound.Door)
 	case res.Picked != 0:
 		g.Sound.Play(sound.Pickup)
+		g.recolour = true
 	}
 	g.addScore(res.Points)
 	for _, e := range res.Done {

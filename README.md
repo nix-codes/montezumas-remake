@@ -182,7 +182,13 @@ cartridge; the last 4 KB can't be checked that way.
   level 5 on, only if the hundreds digit is then even (the game tests bit 0
   of the score's middle BCD byte). `$7049` counts Joe's own life too, and
   drops when he dies rather than when he respawns.
-- Not done: the amulet's border flash.
+- The amulet has no border flash: the contact task greys the creatures
+  (`$A0-$A7`, colour entry 20, via `$91D9`) while it protects Joe, and
+  when it runs out sets them dark green (`$C0`), not their usual medium
+  green (`$20`). The usual colour comes back when the frame interrupt
+  runs `$8EB0`, which first reloads the boot colours (`$8308`). That
+  happens after any pickup (`$903A`), and after a room entry once the main
+  loop runs again and saves Joe for respawning (`$8E7E`).
 
 ### Level start
 

@@ -91,13 +91,23 @@ const (
 	barrierEntry = 28
 	floorEntry   = 29
 	barrierShown = 0x40
+
+	// The amulet sets the creatures' entry ($91D9): grey while it
+	// protects Joe, then dark green, not the room's medium green.
+	creatureEntry      = 20
+	creaturesProtected = 0xE0
+	creaturesAfter     = 0xC0
 )
 
 // Colours returns the room's tile colour table, darkened if it's dark,
-// with the barriers and disappearing floors as they blink.
+// with the barriers and disappearing floors as they blink and the
+// creatures as the amulet left them.
 func (g *Game) Colours() [32]byte {
 	var c [32]byte
 	copy(c[:], g.Rooms[g.Room].TileColours)
+	if g.CreatureColour != 0 {
+		c[creatureEntry] = g.CreatureColour
+	}
 	c[barrierEntry], c[floorEntry] = barrierShown, barrierShown
 	if g.BarriersOff {
 		c[barrierEntry] = 0
