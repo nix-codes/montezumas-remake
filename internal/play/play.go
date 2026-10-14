@@ -88,6 +88,7 @@ type Game struct {
 	Random        uint16
 
 	setupPending bool // draw a new treasure screen on the next frame
+	syncWait     int  // the last frames of Joe's pause, waiting out a mirrored room's sync delay
 	// TreasureScreens counts treasure screens drawn. (The original takes
 	// two frames to draw one; the tests skip comparing that frame.)
 	TreasureScreens int
@@ -297,16 +298,24 @@ func (g *Game) Step(in joe.Input) {
 			return
 		}
 	}
-	g.Random++
-	g.stepAnimation()
-	if g.tick(&g.ContactTimer, contactPeriod) {
-		g.contactTask()
+	// After Joe leaves a room the original stands still: while it draws
+	// the new room nothing runs, not even the frame interrupt; while it
+	// then waits out a mirrored room's sync delay, only the interrupt does.
+	frozen := g.Joe.Frozen > 0
+	drawing := g.Joe.Frozen > g.syncWait
+	if !drawing {
+		g.Random++
+		g.stepAnimation()
 	}
-	if g.tick(&g.ItemTimer, itemPeriod) {
-		g.itemTask()
+	if !frozen {
+		if g.tick(&g.ContactTimer, contactPeriod) {
+			g.contactTask()
+		}
+		if g.tick(&g.ItemTimer, itemPeriod) {
+			g.itemTask()
+		}
 	}
 
-	frozen := g.Joe.Frozen > 0 // the pause while a new room is drawn
 	before := g.Joe
 	g.Joe.Treasure, g.Joe.TimeUp = g.Treasure, g.TreasureTimer == 1
 	g.Joe.BarriersOff, g.Joe.FloorsGone = g.BarriersOff, g.FloorsGone
@@ -315,13 +324,18 @@ func (g *Game) Step(in joe.Input) {
 		g.Joe.Redraw = false
 		g.setupPending = true
 	}
+	g.syncWait = min(g.syncWait, g.Joe.Frozen)
 	if exit != 0 {
 		g.changeRoom(exit, before)
 	} else if !frozen {
 		g.Enemies.Counter++
 		g.Enemies.Update(&g.Tiles, g.Joe.Parity, g.Amulet > 0)
+	} else if !drawing {
+		g.Enemies.Counter++ // ticked by the frame interrupt ($A9E8)
 	}
-	g.barrierTask()
+	if !frozen {
+		g.barrierTask()
+	}
 
 	if g.Joe.Respawn() {
 		g.Lives--
@@ -452,6 +466,9 @@ func (g *Game) changeRoom(exit int, before joe.Joe) {
 	}
 	g.Row, g.Col = row, col
 	g.show(next)
+	// A mirrored room leaves the original waiting a few frames more.
+	g.syncWait = int(g.Rooms[next].SyncDelay)
+	g.Joe.Frozen += g.syncWait
 }
 
 // stepAnimation is the frame interrupt's animation step ($A9F3): show the

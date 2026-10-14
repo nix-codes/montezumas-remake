@@ -29,6 +29,13 @@ const (
 	floorLen  = 10
 )
 
+// The end of the room mirroring routine ($AB29), and the main loop's
+// frame-sync byte, which its row buffer overlaps.
+const (
+	mirrorDone = 0xABAF
+	frameSync  = 0x7207
+)
+
 // Tiles.
 const (
 	tileEmpty       = 0x00
@@ -78,9 +85,19 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		// Rooms mirrored from another ($AB29) leave a tile in the
+		// frame-sync byte; read it as the mirroring finishes.
+		var sync byte
+		g.Trap = func(pc uint16) bool {
+			if pc == mirrorDone {
+				sync = g.Peek(frameSync)
+			}
+			return false
+		}
 		if err := g.LoadRoom(n); err != nil {
 			log.Fatal(err)
 		}
+		g.Trap = nil
 		m := g.Machine
 		row, col := pyramid.Position(n)
 		room := Room{
@@ -95,6 +112,10 @@ func main() {
 			Contacts:       g.Until(original.ContactList, 0xFE, 32),
 			SpriteTable:    g.Bytes(original.SpriteTable, 32),
 			FrameCounter:   g.Peek(original.FrameCounter),
+		}
+		// The main loop waits while the byte is under $80.
+		if sync < 0x80 {
+			room.SyncDelay = sync
 		}
 		// The row's colours are applied on entering the room, after the
 		// enemy state above; capture them lit (the remake darkens rooms).

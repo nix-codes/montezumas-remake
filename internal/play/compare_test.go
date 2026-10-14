@@ -83,6 +83,9 @@ var scenarios = []scenario{
 	{"walk into a barrier while it's on", 10, 165, 53, nil, 60,
 		func(f int) joe.Input { return joe.Input{Right: f >= 20} },
 		expect(func(g *play.Game) bool { return g.Joe.State == joe.Zapped && !g.BarriersOff })},
+	// Room 3 is room 7's neighbour mirrored, which pauses the game longer.
+	{"climb up into a mirrored room", 7, 115, 69, nil, 120, hold(joe.Input{Up: true}),
+		expect(func(g *play.Game) bool { return g.Room == 3 && g.Joe.State == joe.Standing })},
 	// The disappearing floors go 64 frames in.
 	{"a disappearing floor drops Joe", 5, 37, 53, nil, 100, hold(joe.Input{}),
 		expect(func(g *play.Game) bool { return g.Joe.ScreenY() > 53 })},
@@ -156,8 +159,9 @@ func TestMatchesOriginal(t *testing.T) {
 				drawn := g.TreasureScreens
 				g.Step(in)
 				// The original spreads drawing a treasure screen over two
-				// frames; compare the screen once it's finished.
-				if msg := compare(g, o, g.TreasureScreens == drawn); msg != "" {
+				// frames, and a new room over the pause after Joe leaves
+				// the old one; compare the screen once it's finished.
+				if msg := compare(g, o, g.TreasureScreens == drawn && g.Joe.Frozen == 0); msg != "" {
 					t.Fatalf("frame %d: %s", f, msg)
 				}
 			}
@@ -233,6 +237,9 @@ func compare(g *play.Game, o *original.Game, tiles bool) string {
 		}
 	}
 	for _, ob := range g.Enemies.Objects {
+		if !tiles {
+			break // the original is still setting them up
+		}
 		slot := int(ob[0] & 7)
 		b := o.Bytes(uint16(original.SpriteTable+4*slot), 4)
 		s := g.Enemies.Sprites[slot]

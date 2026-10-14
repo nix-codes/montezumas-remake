@@ -36,6 +36,13 @@ type Room struct {
 	Contacts     []byte `json:"contacts"`
 	SpriteTable  []byte `json:"spriteTable"`
 	FrameCounter byte   `json:"frameCounter"`
+
+	// SyncDelay is how many frames the game stands still after drawing
+	// this room, beyond the drawing itself. Rooms built by mirroring
+	// another ($AB29) leave a tile in the main loop's frame-sync byte
+	// ($7207), which overlaps the row buffer at $7200; the main loop then
+	// waits for the frame interrupt to count it down. 0 for other rooms.
+	SyncDelay byte `json:"syncDelay"`
 }
 
 // Exits lists, per side, the neighbouring room (-1 if none) and where the

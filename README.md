@@ -113,8 +113,17 @@ cartridge; the last 4 KB can't be checked that way.
 - `internal/joe`'s comparison test runs 21 scenarios on both games and
   checks Joe's position and state every frame. Not translated yet: dying
   by touching enemies.
-- After a room change the original pauses Joe while it draws the new room
-  (5-6 frames on the emulator, depending on the room); the remake uses 5.
+- After a room change the original pauses while it draws the new room:
+  the main loop runs none of its tasks, and the frame interrupt does
+  nothing. On the emulator that takes 3-10 frames depending on the room
+  (its timing is approximate: it paces frames by instruction count, and
+  the BIOS stand-ins take no time); the remake uses 5.
+- Rooms built by mirroring another (`$AB29`; rooms 3, 24, 30, 42, 44, 52,
+  83 and 89) pause 8 frames more. The mirroring copies each row through a
+  buffer at `$7200`, which overlaps the main loop's frame-sync byte
+  (`$7207`), leaving a brick (`$08`) there; the main loop then waits for
+  the frame interrupt to count it down, running no tasks meanwhile.
+  `cmd/rooms` records the value as `syncDelay`.
 
 ### Enemies
 
