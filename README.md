@@ -51,6 +51,7 @@ cartridge; the last 4 KB can't be checked that way.
 | `internal/joe` | Joe's movement, translated from the original and tested against it frame by frame |
 | `internal/enemy` | The rooms' enemies and the contact check, translated from the original and tested against it |
 | `internal/items` | Items, doors and static creatures (tiles), the inventory, and restoring rooms on revisits |
+| `internal/sound` | The SN76489A sound chip, and the game's sound-effect player translated from the original |
 | `internal/play` | The game: state and one frame of play in the original's order, with the HUD; tested against the original |
 | `cmd/game` | Shows `internal/play` in a window and feeds it the keyboard |
 
@@ -62,7 +63,10 @@ cartridge; the last 4 KB can't be checked that way.
   BIOS routines the game calls. `LOAD_ASCII` uses a stand-in font squeezed
   from Go's 7x13 basic font.
 - The Z80 core (koron-go/z80) doesn't count cycles, so frames are paced at a
-  fixed number of instructions. Sound isn't emulated.
+  fixed number of instructions.
+- Writes to the sound port (`$E0-$FF`) and `TURN_OFF_SOUND` go to
+  `internal/sound`'s SN76489A, which both `make original` and `make run`
+  play.
 - `Machine.Call` runs one of the game's subroutines to completion, which is
   how `cmd/rooms` loads rooms.
 
@@ -168,6 +172,10 @@ cartridge; the last 4 KB can't be checked that way.
   every frame, and check revisited rooms load the same.
 - Dark rooms: rows at least 9 minus the level are dark without the torch
   (the room-entry routine at `$8EB0` blanks colour entries).
+- Passing a multiple of 10,000 points (`$AF70`) earns a spare life; from
+  level 5 on, only if the hundreds digit is then even (the game tests bit 0
+  of the score's middle BCD byte). `$7049` counts Joe's own life too, and
+  drops when he dies rather than when he respawns.
 - Not done: the amulet's border flash.
 
 ### Treasure room and next level
@@ -185,6 +193,41 @@ cartridge; the last 4 KB can't be checked that way.
   Levels past 3 use level 3's room data.
 - Tests compare falling through the treasure room (several screens) and
   catching a side pole into the next level against the original.
+
+### Sound
+
+- The game plays one sound effect at a time with its own player: `$AC1A`
+  starts effect A, and the frame interrupt runs `$AC6D`, which writes the
+  sound port directly. It doesn't run while the game is paused drawing a
+  room, and loading a room (`$A06A`) calls `TURN_OFF_SOUND`, so an effect
+  playing then runs on silently. There is no music.
+- The 10 effects (pointer table at `$AD0B`, data to `$ADFF`): 0 extra life,
+  1 leaving the bottom row (into the treasure room or the next level),
+  2 item picked up, 3 sword kill, 4 landing, 5 death (burnt, zapped or
+  caught; falls only make the landing sound), 6 catching a pole, 7 jump,
+  8 door opened, 9 footsteps. A lower number takes over from a higher one
+  that's playing; the same effect starts over, except 1 and 9.
+- An effect is a header (frames per step; a control byte whose bits 0-1
+  give how many tone channels it uses and bit 2 selects white noise), then
+  volumes for the first step (two channels to a byte), then a byte per tone
+  channel per step, channel 2 first: the tone period over 4. A zero ends
+  it. The noise always follows channel 2's tone.
+- Footsteps: `$70AA` counts 7 down to 0, a step every other frame Joe
+  holds a direction while walking or up/down while climbing (`$8C3F`,
+  `$91BD`). The movement task starts (`$92DC`) by playing effect 9 if Joe is
+  walking and the count is 2 or more. (The original also takes the walking
+  sprite from this count; the remake's walk animation was measured
+  instead.)
+- `internal/sound`'s chip queues each frame's writes and plays them 1/60 s
+  apart, a few frames behind the game (Ebitengine reads audio 50 ms at a
+  time, which otherwise merges short effects' steps). Channels output 0 or
+  their volume, with the DC filtered out; tones above 14 kHz (period 4,
+  which the effects use between notes) are heard as their average. The
+  noise register follows MAME's SN76489A: 17 bits, white noise fed back
+  from bits 2 and 3.
+- Tests compare the player's RAM and the chip's registers every frame in
+  all of `internal/play`'s scenarios, and the effects Joe starts in all of
+  `internal/joe`'s.
 
 ### Graphics
 

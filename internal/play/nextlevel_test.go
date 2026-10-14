@@ -7,6 +7,7 @@ import (
 	"montezuma-remake/internal/coleco"
 	"montezuma-remake/internal/joe"
 	"montezuma-remake/internal/original"
+	"montezuma-remake/internal/sound"
 )
 
 // TestPoleToNextLevel puts both games in the treasure room's right-hand
@@ -44,13 +45,31 @@ func TestPoleToNextLevel(t *testing.T) {
 	g.Joe.FireLatch = o.Peek(0x7075)
 	g.ContactTimer, g.ItemTimer = int(o.Peek(0x7073)), int(o.Peek(0x7012))
 	g.Random = uint16(o.Peek(0x7047)) | uint16(o.Peek(0x7048))<<8
+	g.Joe.StepCounter, g.Joe.StepDelay = o.Peek(0x70AA), o.Peek(0x70AD)
+	g.Sound = o.Sound()
+	g.Sound.Effects = g.Rules.Sound
+	g.PSG.Set(o.PSG.Registers())
 
 	sawPole := false
+	var heard uint16 // effects played
 	for f := 0; f < 300; f++ {
 		if err := o.Step(coleco.Joystick{}); err != nil {
 			t.Fatal(err)
 		}
 		g.Step(joe.Input{})
+		player := g.Sound
+		player.Effects = nil
+		// Starting the next level, the remake loads the starting room at
+		// once, silencing the chip; the original first slides Joe down the
+		// entrance pole.
+		newLevel := o.Peek(0x71A6) != 1
+		if want := o.Sound(); player != want || !newLevel && g.PSG.Registers() != o.PSG.Registers() {
+			t.Fatalf("frame %d: sound: remake %+v %+v, original %+v %+v", f,
+				player, g.PSG.Registers(), want, o.PSG.Registers())
+		}
+		if player.Active {
+			heard |= 1 << player.ID
+		}
 		if o.Peek(0x71A6) != 1 {
 			if g.Level != 2 || g.Treasure || g.Room != 2 {
 				t.Errorf("frame %d: original started level 2; remake level %d, treasure %v, room %d",
@@ -58,6 +77,9 @@ func TestPoleToNextLevel(t *testing.T) {
 			}
 			if !sawPole {
 				t.Error("Joe never slid down the pole")
+			}
+			if want := uint16(1<<sound.Pole | 1<<sound.Below); heard&want != want {
+				t.Errorf("effects played: %010b, want the pole and leaving the bottom row", heard)
 			}
 			return
 		}

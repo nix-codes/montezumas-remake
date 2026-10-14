@@ -9,6 +9,7 @@ import (
 
 	"montezuma-remake/internal/coleco"
 	"montezuma-remake/internal/pyramid"
+	"montezuma-remake/internal/sound"
 )
 
 // Game addresses.
@@ -186,4 +187,20 @@ func (g *Game) Step(in coleco.Joystick) error {
 	in.Key = -1
 	g.Input = in
 	return g.RunFrame()
+}
+
+// Sound returns the state of the game's sound-effect player ($702C-$7035).
+func (g *Game) Sound() sound.Player {
+	b := g.Bytes(0x702C, 10)
+	return sound.Player{
+		Active:   b[0]&0x80 != 0,
+		Starting: b[0]&0x20 != 0,
+		ID:       b[1],
+		Pointer:  uint16(b[2]) | uint16(b[3])<<8,
+		Duration: b[4],
+		Channels: b[5],
+		Frame:    b[6],
+		Channel:  b[7],
+		Control:  b[9],
+	}
 }

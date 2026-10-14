@@ -1,5 +1,7 @@
 package coleco
 
+import "montezuma-remake/internal/sound"
+
 // Go stand-ins for the ColecoVision BIOS (OS7) routines the game calls,
 // keyed by their jump-table address.
 var biosCalls = map[uint16]func(m *Machine){
@@ -18,7 +20,7 @@ var biosCalls = map[uint16]func(m *Machine){
 	0x1FBE: func(m *Machine) { m.copyVRAM(true) },             // PUT_VRAM
 	0x1FC1: (*Machine).initSpriteOrder,                        // INIT_SPR_NM_TBL
 	0x1FC4: (*Machine).writeSpriteTable,                       // WR_SPR_NM_TBL
-	0x1FD6: func(*Machine) {},                                 // TURN_OFF_SOUND
+	0x1FD6: func(m *Machine) { sound.TurnOff(m.PSG) },         // TURN_OFF_SOUND
 	0x1FD9: (*Machine).writeRegister,                          // WRITE_REGISTER
 	0x1FDC: (*Machine).readRegister,                           // READ_REGISTER
 }

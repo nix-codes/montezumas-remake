@@ -11,6 +11,7 @@ import (
 	"montezuma-remake/internal/pyramid"
 	"montezuma-remake/internal/rom"
 	"montezuma-remake/internal/roomdata"
+	"montezuma-remake/internal/sound"
 )
 
 // StartLives is how many spare lives a game starts with (the hats in the
@@ -27,13 +28,15 @@ const (
 	itemPeriod    = 4
 )
 
-// Rules are the original's tables, its animated tile patterns, and the ROM
-// itself, which the treasure room reads for random numbers.
+// Rules are the original's tables, its animated tile patterns, its sound
+// effects, and the ROM itself, which the treasure room reads for random
+// numbers.
 type Rules struct {
 	Joe   *joe.Rules
 	Enemy *enemy.Rules
 	Items *items.Rules
 	Anim  *gfx.Animation
+	Sound *sound.Effects
 	ROM   *rom.ROM
 }
 
@@ -55,7 +58,11 @@ func RulesFromROM(r *rom.ROM) (*Rules, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Rules{Joe: j, Enemy: e, Items: i, Anim: a, ROM: r}, nil
+	s, err := sound.EffectsFromROM(r)
+	if err != nil {
+		return nil, err
+	}
+	return &Rules{Joe: j, Enemy: e, Items: i, Anim: a, Sound: s, ROM: r}, nil
 }
 
 // Game is a game in progress.
@@ -114,6 +121,10 @@ type Game struct {
 	BarrierTimer byte
 	BarriersOff  bool // $7000 bit 5: hidden and harmless
 	FloorsGone   bool // $7000 bit 6
+
+	// The sound chip, and the player the frame interrupt runs on it.
+	PSG   *sound.PSG
+	Sound sound.Player
 }
 
 // Screen is the current room's tiles as items change them. Version goes up
@@ -137,7 +148,8 @@ func (s *Screen) SetTile(col, row int, t byte) {
 
 // New starts a game on level (1-3) in room.
 func New(rooms []roomdata.Room, rules *Rules, level, room int) *Game {
-	g := &Game{Rules: rules, Rooms: rooms, Level: level}
+	g := &Game{Rules: rules, Rooms: rooms, Level: level, PSG: sound.NewPSG()}
+	g.Sound.Effects = rules.Sound
 	g.Restart(room)
 	return g
 }
@@ -249,6 +261,7 @@ func (g *Game) show(room int) {
 // load sets the room up as the original's loader does: tiles, items and
 // doors already dealt with, and the enemies still there.
 func (g *Game) load() {
+	sound.TurnOff(g.PSG) // $A06A; an effect that's playing runs on silently
 	r := &g.Rooms[g.Room]
 	g.Tiles.T = r.Tiles
 	g.Tiles.Version++
@@ -287,6 +300,7 @@ func (g *Game) itemRoom() *items.Room {
 // Step runs one frame, in the original's order: the main loop's contact
 // and item tasks, then the enemies and Joe.
 func (g *Game) Step(in joe.Input) {
+	defer g.PSG.EndFrame()
 	// The frame interrupt: set up a pending treasure screen, then move the
 	// random pointer. Drawing chains and jewels takes the whole frame: the
 	// pointer doesn't move, and the main loop's tasks, Joe included, don't
@@ -306,6 +320,7 @@ func (g *Game) Step(in joe.Input) {
 	if !drawing {
 		g.Random++
 		g.stepAnimation()
+		g.Sound.Tick(g.PSG)
 	}
 	if !frozen {
 		if g.tick(&g.ContactTimer, contactPeriod) {
@@ -320,6 +335,7 @@ func (g *Game) Step(in joe.Input) {
 	g.Joe.Treasure, g.Joe.TimeUp = g.Treasure, g.TreasureTimer == 1
 	g.Joe.BarriersOff, g.Joe.FloorsGone = g.BarriersOff, g.FloorsGone
 	exit := g.Joe.Step(in, &g.Tiles, g.Rules.Joe)
+	g.playJoeSounds()
 	if g.Joe.Redraw {
 		g.Joe.Redraw = false
 		g.setupPending = true
@@ -387,17 +403,19 @@ func (g *Game) contactTask() {
 	}
 	g.Done[g.Room] |= 1 << entry
 	if g.Inventory.Remove(items.Sword) {
+		g.Sound.Play(sound.SwordKill)
 		spr := g.Enemies.Sprites[slot]
 		if spr.Colour == 0x0F {
-			g.Score += items.PointsSkull
+			g.addScore(items.PointsSkull)
 		} else {
-			g.Score += items.PointsEnemy
+			g.addScore(items.PointsEnemy)
 		}
 		spr.Colour = 0
 		g.RedrawHUD()
 		return
 	}
 	g.Joe.Kill()
+	g.playJoeSounds()
 }
 
 // itemTask is the original's $8F5F: doors, creatures and pickups. It
@@ -414,7 +432,13 @@ func (g *Game) itemTask() {
 		FacingLeft: g.Joe.Facing < 0,
 		Dead:       g.Joe.State == joe.Dead,
 	}, &g.Inventory, g.Amulet > 0)
-	g.Score += res.Points
+	switch {
+	case res.Opened:
+		g.Sound.Play(sound.Door)
+	case res.Picked != 0:
+		g.Sound.Play(sound.Pickup)
+	}
+	g.addScore(res.Points)
 	for _, e := range res.Done {
 		g.Done[g.Room] |= 1 << e
 	}
@@ -423,10 +447,38 @@ func (g *Game) itemTask() {
 	}
 	if res.KillJoe {
 		g.Joe.Kill()
+		g.playJoeSounds()
 	}
 	if res.Picked != 0 || res.Opened {
 		g.RedrawHUD()
 	}
+}
+
+// playJoeSounds plays the sound effects Joe started, lowest number last
+// so it wins as it would have in the original.
+func (g *Game) playJoeSounds() {
+	for id := 15; id >= 0; id-- {
+		if g.Joe.Sounds&(1<<id) != 0 {
+			g.Sound.Play(byte(id))
+		}
+	}
+	g.Joe.Sounds = 0
+}
+
+// addScore adds points to the score ($AF70). Passing a multiple of 10,000
+// earns a spare life, though from level 5 on only when the hundreds digit
+// is then even (the game tests bit 0 of the score's middle BCD byte).
+func (g *Game) addScore(points int) {
+	before := g.Score
+	g.Score += points
+	if g.Score/10000 == before/10000 {
+		return
+	}
+	if g.Score/100%2 == 0 || g.Level < 5 {
+		g.Lives++
+	}
+	g.RedrawHUD()
+	g.Sound.Play(sound.ExtraLife)
 }
 
 // changeRoom follows Joe out of the room, using the game's row and column

@@ -8,6 +8,7 @@ import (
 	"montezuma-remake/internal/joe"
 	"montezuma-remake/internal/original"
 	"montezuma-remake/internal/rom"
+	"montezuma-remake/internal/sound"
 )
 
 const romPath = "../../build/montezuma.rom"
@@ -83,6 +84,17 @@ func TestMatchesOriginal(t *testing.T) {
 			j.Place(sc.x, sc.y)
 			j.Parity = g.Peek(0x70AB)
 			j.FireLatch = g.Peek(0x7075)
+			j.StepCounter, j.StepDelay = g.Peek(0x70AA), g.Peek(0x70AD)
+
+			// The sound effects Joe starts ($AC1A with A = the effect).
+			var sounds uint16
+			g.Trap = func(pc uint16) bool {
+				if pc == 0xAC1A && joeSounds&(1<<g.CPU.AF.Hi) != 0 {
+					sounds |= 1 << g.CPU.AF.Hi
+				}
+				return false
+			}
+			heard := uint16(0)
 
 			// After a room change the original pauses while it draws the
 			// new room, for a time that depends on the room; the remake uses
@@ -95,6 +107,7 @@ func TestMatchesOriginal(t *testing.T) {
 				tiles := make([]byte, 768)
 				copy(tiles, g.VDP.NameTable())
 				counter := g.Peek(0x70AB)
+				sounds = 0
 				if err := g.Step(coleco.Joystick{Up: in.Up, Down: in.Down, Left: in.Left, Right: in.Right, FireLeft: in.Fire}); err != nil {
 					t.Fatal(err)
 				}
@@ -113,10 +126,18 @@ func TestMatchesOriginal(t *testing.T) {
 				if got != want {
 					t.Fatalf("frame %d: remake %s, original %s", f, got, want)
 				}
+				if j.Sounds != sounds {
+					t.Fatalf("frame %d: sound effects: remake %010b, original %010b", f, j.Sounds, sounds)
+				}
+				heard |= sounds
 			}
+			t.Logf("sound effects: %010b", heard)
 		})
 	}
 }
+
+// joeSounds are the sound effects Joe's movement starts.
+const joeSounds = 1<<sound.Land | 1<<sound.Death | 1<<sound.Pole | 1<<sound.Jump | 1<<sound.Walk
 
 // frozen is a copy of the original's screen, so the remake sees the same
 // tiles even when the original changes them (doors, items, room changes).

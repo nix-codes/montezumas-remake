@@ -6,6 +6,8 @@
 // Not yet translated: dying by touching enemies.
 package joe
 
+import "montezuma-remake/internal/sound"
+
 // States, as in $7079.
 const (
 	Standing = 0
@@ -81,6 +83,8 @@ type Joe struct {
 	DeathTimer    int  // $70A9: frames left before he respawns
 	Frozen        int  // frames left of the pause after changing room
 	AnimTick      int  // frames he has moved, for walking and climbing animation
+	StepCounter   byte // $70AA: 7 down to 0, a step every other frame he's moving
+	StepDelay     byte // $70AD: frames to the next step
 
 	// Set by the game: Joe is in the treasure room below the pyramid
 	// ($705F bit 5), and its time is up ($70AC is 1).
@@ -92,6 +96,9 @@ type Joe struct {
 	// Set by Step when Joe jumps off a chain after the treasure room's time
 	// is up: the game redraws the screen ($705F bit 3).
 	Redraw bool
+	// Sounds has bit n set for each sound effect n (see internal/sound)
+	// Joe started this frame.
+	Sounds uint16
 }
 
 // ScreenY returns the top of Joe's body sprite on screen.
@@ -99,7 +106,7 @@ func (j *Joe) ScreenY() int { return (int(j.RawY) + 1) & 0xFF }
 
 // Place puts Joe standing with the top of his body at screen (x, y).
 func (j *Joe) Place(x, y int) {
-	*j = Joe{X: byte(x), RawY: byte(y - 1), FireLatch: 0x80}
+	*j = Joe{X: byte(x), RawY: byte(y - 1), FireLatch: 0x80, StepDelay: 1}
 }
 
 // buffer holds the 3x2 tiles around a sprite's feet, as the game reads
@@ -162,6 +169,10 @@ func (j *Joe) Step(in Input, t Tiles, r *Rules) (exit int) {
 	if j.Frozen > 0 {
 		j.Frozen--
 		return 0
+	}
+	j.Sounds = 0
+	if j.State == Walking && j.StepCounter>>1 != 0 {
+		j.sound(sound.Walk) // footsteps ($92DC)
 	}
 	b := j.read(t)
 	j.Parity = (j.Parity - 1) & 3
@@ -338,6 +349,7 @@ func (j *Joe) standing(in Input, b buffer, r *Rules) {
 		j.die(Burnt)
 		return
 	}
+	j.step(in.Up || in.Down || in.Left || in.Right) // $8956
 	switch {
 	case in.Up && b[1] == tileLadder && b[2] == tileLadder+1:
 		j.alignLadder()
@@ -380,6 +392,7 @@ func (j *Joe) standing(in Input, b buffer, r *Rules) {
 
 // jump starts a jump ($89DC).
 func (j *Joe) jump(dx int8, b buffer, r *Rules) {
+	j.sound(sound.Jump)
 	j.FallStart = j.RawY
 	j.JumpCounter = len(r.JumpArc)
 	j.commit(Jumping, dx, -1, b, r)
@@ -423,6 +436,7 @@ func (j *Joe) grab(t byte, b buffer, r *Rules) bool {
 		j.commit(Rope, 0, 0, b, r)
 		return true
 	case t == tilePole && b[4] != tileBrick && canGrab:
+		j.sound(sound.Pole)
 		j.alignRope()
 		j.commit(Pole, 0, 4, b, r)
 		return true
@@ -448,6 +462,7 @@ func (j *Joe) falling(dx, dy int8, b buffer, r *Rules) {
 	for y := j.RawY & 0x0F; y != 4 && y != 12; y = (y - 1) & 0x0F {
 		snap--
 	}
+	j.sound(sound.Land)
 	if j.RawY >= j.FallStart && j.RawY-j.FallStart >= 28 && j.State != Pole {
 		// The game swaps the rows of his two sprites for the death pose,
 		// so the body ends up 3 lines lower ($8AE0).
@@ -477,6 +492,7 @@ func (j *Joe) ladder(in Input, b buffer, r *Rules) {
 		j.fall(b, r)
 		return
 	}
+	j.step(in.Up || in.Down) // $8C81
 	if ok, _ := j.floor(b[4], r); ok {
 		j.fall(b, r) // reached a floor: let go and land
 		return
@@ -493,6 +509,7 @@ func (j *Joe) ladder(in Input, b buffer, r *Rules) {
 
 // rope handles state 4 ($8D02).
 func (j *Joe) rope(in Input, b buffer, r *Rules) {
+	j.step(in.Up || in.Down)
 	if j.jumpPressed(in) {
 		var dx int8
 		switch {
@@ -585,6 +602,9 @@ func (j *Joe) Kill() {
 
 // die kills Joe ($8AE0 for falls, $8A91 for fire and hazards).
 func (j *Joe) die(state int) {
+	if state != Dead {
+		j.sound(sound.Death)
+	}
 	j.State = state
 	j.DX, j.DY = 0, 0
 	j.DeathTimer = 0x70
@@ -597,6 +617,23 @@ func (j *Joe) dead() {
 	if j.DeathTimer > 0 {
 		j.DeathTimer--
 	}
+}
+
+func (j *Joe) sound(id int) { j.Sounds |= 1 << id }
+
+// step counts Joe's steps while he's moving ($8C3F, $91BD).
+func (j *Joe) step(moving bool) {
+	if !moving {
+		return
+	}
+	if j.StepDelay--; j.StepDelay != 0 {
+		return
+	}
+	j.StepDelay = 2
+	if j.StepCounter == 0 {
+		j.StepCounter = 8
+	}
+	j.StepCounter--
 }
 
 // Respawn reports whether Joe's death animation has finished.

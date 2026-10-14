@@ -16,11 +16,14 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
 
 	"montezuma-remake/internal/coleco"
 	"montezuma-remake/internal/rom"
+	"montezuma-remake/internal/sound"
 )
 
 const windowScale = 3
@@ -53,6 +56,9 @@ func main() {
 		return
 	}
 
+	if err := playSound(m.PSG); err != nil {
+		log.Fatal(err)
+	}
 	ebiten.SetWindowSize(256*windowScale, 192*windowScale)
 	ebiten.SetWindowTitle("Montezuma's Revenge (original ROM)")
 	if err := ebiten.RunGame(&viewer{m: m, screen: image.NewRGBA(image.Rect(0, 0, 256, 192))}); err != nil {
@@ -177,4 +183,18 @@ func runHeadless(m *coleco.Machine, frames int, steps []step, screenshot string)
 	}
 	defer f.Close()
 	return png.Encode(f, img)
+}
+
+// sampleRate is the audio output rate.
+const sampleRate = 48000
+
+// playSound plays the sound chip's output until the program ends.
+func playSound(psg *sound.PSG) error {
+	p, err := audio.NewContext(sampleRate).NewPlayer(sound.Stream{PSG: psg, Rate: sampleRate})
+	if err != nil {
+		return err
+	}
+	p.SetBufferSize(50 * time.Millisecond)
+	p.Play()
+	return nil
 }

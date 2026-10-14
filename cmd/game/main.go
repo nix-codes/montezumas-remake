@@ -13,8 +13,10 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/audio"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 
 	"montezuma-remake/internal/joe"
@@ -22,6 +24,7 @@ import (
 	"montezuma-remake/internal/pyramid"
 	"montezuma-remake/internal/rom"
 	"montezuma-remake/internal/roomdata"
+	"montezuma-remake/internal/sound"
 	"montezuma-remake/internal/vdp"
 )
 
@@ -99,6 +102,11 @@ func main() {
 		pixels:     image.NewRGBA(image.Rect(0, 0, screenW, screenH)),
 		drawnRoom:  -1,
 		screenshot: *screenshot,
+	}
+	if *screenshot == "" {
+		if err := playSound(g.PSG); err != nil {
+			log.Fatal(err)
+		}
 	}
 	ebiten.SetWindowSize(screenW*windowScale, screenH*windowScale)
 	if err := ebiten.RunGame(w); err != nil {
@@ -221,4 +229,18 @@ func saveScreenshot(screen *ebiten.Image, path string) error {
 
 func (w *window) Layout(int, int) (int, int) {
 	return screenW, screenH
+}
+
+// sampleRate is the audio output rate.
+const sampleRate = 48000
+
+// playSound plays the sound chip's output until the program ends.
+func playSound(psg *sound.PSG) error {
+	p, err := audio.NewContext(sampleRate).NewPlayer(sound.Stream{PSG: psg, Rate: sampleRate})
+	if err != nil {
+		return err
+	}
+	p.SetBufferSize(50 * time.Millisecond)
+	p.Play()
+	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"montezuma-remake/internal/items"
 	"montezuma-remake/internal/joe"
 	"montezuma-remake/internal/pyramid"
+	"montezuma-remake/internal/sound"
 )
 
 // The treasure room lies below the bottom row of the pyramid: falling
@@ -30,6 +31,7 @@ const (
 // enterBelow handles leaving the bottom row ($8E0C): the next level if Joe
 // is on a pole, otherwise the treasure room.
 func (g *Game) enterBelow(row, col int) {
+	g.Sound.Play(sound.Below)
 	if g.Joe.State == joe.Pole {
 		g.nextLevel()
 		return

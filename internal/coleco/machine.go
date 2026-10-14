@@ -1,12 +1,15 @@
 // Package coleco emulates enough of a ColecoVision to run the original game:
-// a Z80, 1 KB of RAM, the cartridge, the video chip, and Go stand-ins for
-// the BIOS routines the game calls (the BIOS ROM itself is not included).
+// a Z80, 1 KB of RAM, the cartridge, the video and sound chips, and Go
+// stand-ins for the BIOS routines the game calls (the BIOS ROM itself is
+// not included).
 package coleco
 
 import (
 	"fmt"
 
 	"github.com/koron-go/z80"
+
+	"montezuma-remake/internal/sound"
 )
 
 // Memory map.
@@ -33,6 +36,7 @@ type Joystick struct {
 type Machine struct {
 	CPU  z80.CPU
 	VDP  VDP
+	PSG  *sound.PSG
 	RAM  [0x400]byte
 	cart []byte
 	bios [biosEnd]byte
@@ -58,7 +62,7 @@ const callReturn = 0x1000
 // New returns a machine that will start the cartridge at its entry point,
 // as the BIOS does after its title screen.
 func New(cart []byte) *Machine {
-	m := &Machine{cart: cart, Input: Joystick{Key: -1}}
+	m := &Machine{cart: cart, PSG: sound.NewPSG(), Input: Joystick{Key: -1}}
 	m.CPU.Memory = (*memory)(m)
 	m.CPU.IO = (*ports)(m)
 	m.VDP.nmi = func() { m.CPU.Interrupt = z80.NMIInterrupt() }
@@ -106,6 +110,7 @@ func (m *Machine) RunFrame() error {
 		m.CPU.Step()
 	}
 	m.VDP.EndFrame()
+	m.PSG.EndFrame()
 	m.Frames++
 	return nil
 }
@@ -195,12 +200,14 @@ func (p *ports) In(port uint8) uint8 {
 }
 
 func (p *ports) Out(port uint8, v uint8) {
-	if port&0xE0 == 0xA0 {
+	switch port & 0xE0 {
+	case 0xA0:
 		if port&1 == 0 {
 			p.VDP.WriteData(v)
 		} else {
 			p.VDP.WriteControl(v)
 		}
+	case 0xE0:
+		p.PSG.Out(v)
 	}
-	// $E0-$FF is the sound chip; sound isn't emulated yet.
 }

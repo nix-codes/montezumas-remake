@@ -11,6 +11,7 @@ import (
 	"montezuma-remake/internal/play"
 	"montezuma-remake/internal/rom"
 	"montezuma-remake/internal/roomdata"
+	"montezuma-remake/internal/sound"
 )
 
 const (
@@ -31,6 +32,8 @@ const (
 	chainFrame   = 0x7096
 	chainToggle  = 0x7098
 	barrierTimer = 0x70A8
+	lives        = 0x7049
+	level1       = 0x71A6 // the level, from 1
 )
 
 type scenario struct {
@@ -102,6 +105,41 @@ func expect(ok func(g *play.Game) bool) func(g *play.Game) string {
 }
 
 func TestMatchesOriginal(t *testing.T) {
+	for _, sc := range scenarios {
+		t.Run(sc.name, func(t *testing.T) { run(t, sc, nil) })
+	}
+}
+
+// TestExtraLife picks up a jewel at 9,500 points, on level 1 and on level
+// 5, where the hundreds digit of 10,500 being odd means no spare life.
+func TestExtraLife(t *testing.T) {
+	for _, level := range []int{1, 5} {
+		lives := play.StartLives
+		if level == 1 {
+			lives++
+		}
+		sc := scenarios[6] // pick up a jewel
+		sc.name = fmt.Sprintf("level %d", level)
+		sc.expect = expect(func(g *play.Game) bool {
+			return g.Score == 10500 && g.Lives == lives && g.Sound.ID == sound.ExtraLife
+		})
+		t.Run(sc.name, func(t *testing.T) {
+			run(t, sc, func(g *play.Game, o *original.Game) {
+				o.Poke(level1, byte(level))
+				o.Poke(score+1, 0x95)
+				if err := o.Call(0xAEFE, 10); err != nil { // redraw the score
+					t.Fatal(err)
+				}
+				g.Level, g.Score = level, 9500
+				g.RedrawHUD()
+			})
+		})
+	}
+}
+
+// run plays sc in both games, comparing them every frame. setup, if set,
+// changes both games before the first frame.
+func run(t *testing.T, sc scenario, setup func(*play.Game, *original.Game)) {
 	r, err := rom.Load(romPath)
 	if err != nil {
 		t.Skip(err)
@@ -114,8 +152,8 @@ func TestMatchesOriginal(t *testing.T) {
 	if err != nil {
 		t.Skip(err)
 	}
-	for _, sc := range scenarios {
-		t.Run(sc.name, func(t *testing.T) {
+	{
+		{
 			o, err := original.Start(romPath, 1)
 			if err != nil {
 				t.Skip(err)
@@ -150,6 +188,9 @@ func TestMatchesOriginal(t *testing.T) {
 			}
 			g.RedrawHUD()
 			sync(g, o)
+			if setup != nil {
+				setup(g, o)
+			}
 
 			for f := 0; f < sc.frames; f++ {
 				in := sc.input(f)
@@ -168,7 +209,7 @@ func TestMatchesOriginal(t *testing.T) {
 			if msg := sc.expect(g); msg != "" {
 				t.Error(msg)
 			}
-		})
+		}
 	}
 }
 
@@ -182,12 +223,16 @@ func sync(g *play.Game, o *original.Game) {
 	}
 	g.Joe.Parity = o.Peek(parity)
 	g.Joe.FireLatch = o.Peek(fireLatch)
+	g.Joe.StepCounter, g.Joe.StepDelay = o.Peek(0x70AA), o.Peek(0x70AD)
 	g.ContactTimer = int(o.Peek(contactTimer))
 	g.ItemTimer = int(o.Peek(itemTimer))
 	g.Enemies.Counter = o.Peek(original.FrameCounter)
 	g.Random = uint16(o.Peek(0x7047)) | uint16(o.Peek(0x7048))<<8
 	g.AnimStep, g.ChainFrame, g.ChainToggle = o.Peek(animStep), o.Peek(chainFrame), o.Peek(chainToggle)
 	g.BarrierTimer = o.Peek(barrierTimer)
+	g.Sound = o.Sound()
+	g.Sound.Effects = g.Rules.Sound
+	g.PSG.Set(o.PSG.Registers())
 	g.BarriersOff, g.FloorsGone = o.Peek(flags)&0x20 != 0, o.Peek(flags)&0x40 != 0
 	// The barrier frame on screen isn't kept in RAM: find it.
 	for f := range byte(4) {
@@ -202,6 +247,19 @@ func sync(g *play.Game, o *original.Game) {
 	}
 }
 
+// compareSound compares the sound players and the sound chips.
+func compareSound(g *play.Game, o *original.Game) string {
+	got, want := g.Sound, o.Sound()
+	got.Effects = nil
+	if got != want {
+		return fmt.Sprintf("sound player: remake %+v, original %+v", got, want)
+	}
+	if got, want := g.PSG.Registers(), o.PSG.Registers(); got != want {
+		return fmt.Sprintf("sound chip: remake %+v, original %+v", got, want)
+	}
+	return ""
+}
+
 func compare(g *play.Game, o *original.Game, tiles bool) string {
 	j := o.Joe()
 	if got, want := fmt.Sprintf("x=%d y=%d state=%d", g.Joe.X, g.Joe.ScreenY(), g.Joe.State),
@@ -213,6 +271,14 @@ func compare(g *play.Game, o *original.Game, tiles bool) string {
 	}
 	if got, want := g.Score, bcd(o.Bytes(score, 3)); got != want {
 		return fmt.Sprintf("score: remake %d, original %d", got, want)
+	}
+	// $7049 counts Joe's own life, and loses it as he dies rather than
+	// when he respawns.
+	if got, want := g.Lives, int(o.Peek(lives))-1; got != want && g.Joe.State < joe.Zapped {
+		return fmt.Sprintf("lives: remake %d, original %d", got, want)
+	}
+	if msg := compareSound(g, o); msg != "" {
+		return msg
 	}
 	if tiles {
 		if got, want := g.Patterns(), o.VDP.TilePatterns(); string(got[:]) != string(want) {
