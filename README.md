@@ -356,3 +356,9 @@ cartridge; the last 4 KB can't be checked that way.
 - Sprite colours are set at run time, so sprites are drawn in white.
 - The extracted graphics are the original game's assets: fine for personal
   use, not for redistribution.
+
+## License
+
+GPL-3.0, the license of the disassembly the remake is built from; see
+[LICENSE](LICENSE). Montezuma's Revenge itself, its name and its art belong
+to their rights holders; no ROM is included.
