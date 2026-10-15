@@ -5,6 +5,11 @@ compilable disassembly in
 [tony-cruise/colecovision-games-source](https://github.com/tony-cruise/colecovision-games-source/tree/main/games/Montezuma%27s%20Revenge)
 (GPL-3.0, copied into `original/`).
 
+<p>
+  <img src="docs/room2.png" width="49%" alt="The first room of the pyramid">
+  <img src="docs/room30.png" width="49%" alt="Room 30, with a rope, fire pits and a sword">
+</p>
+
 ## Requirements
 
 - Go 1.27+
