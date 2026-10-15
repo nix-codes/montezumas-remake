@@ -3,7 +3,7 @@ ASM       := original/montezumas-revenge.asm
 ROM       := build/montezuma.rom
 ROOMS     := $(foreach l,1 2 3 4 5 6 7 8 9,assets/rooms/level$(l)/rooms.json)
 
-.PHONY: all rom extract rooms run original test clean
+.PHONY: all rom extract rooms run debug original test clean
 
 all: extract
 
@@ -27,6 +27,9 @@ assets/rooms/level%/rooms.json: $(ROM) cmd/rooms/main.go internal/roomdata/roomd
 
 run: $(ROM) $(ROOMS)
 	go run ./cmd/game -rom $(ROM) -rooms assets/rooms
+
+debug: $(ROM) $(ROOMS)
+	go run ./cmd/game -rom $(ROM) -rooms assets/rooms -debug
 
 original: $(ROM)
 	go run ./cmd/original -rom $(ROM)

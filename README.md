@@ -22,7 +22,8 @@ compilable disassembly in
 make rom       # assemble original/ into build/montezuma.rom
 make extract   # write tiles.png, sprites.png and loader-calls.txt to assets/
 make rooms     # capture all rooms of levels 1-9 to assets/rooms/
-make run       # play the remake: 1-3 pick the level, arrows move, space/Z/X jump, Esc resets
+make run       # play the remake: 1-3 pick the level, arrows move, space/Z/X jump, P/Pause/Esc pause, Ctrl+R resets, Ctrl+Q quits
+make debug     # the same, with -debug: PageUp/PageDown jump rooms, the title shows where Joe is
 make original  # play the original ROM on the built-in emulator
 make test
 ```
@@ -30,13 +31,14 @@ make test
 `make original` keys: arrows = joystick, Z/X = left/right fire, 0-9 = keypad
 (press 1, 2 or 3 on the title screen to pick a level).
 
-In the remake, Esc is the console's reset button, back to the title
-screen, and PageUp/PageDown jump rooms for testing. `go run ./cmd/game
--level N` skips the title and starts level N, `-room N` starts in room N;
-`-screenshot out.png` saves an early frame and exits. A game starts as
-the original does, with Joe walked from the entrance hall into the
-pyramid. Jumping to a room
-(PageUp/PageDown or `-room`) stands Joe on a floor spot away from its
+In the remake, Ctrl+R is the console's reset button, back to the title
+screen, and Ctrl+Q quits; P, Pause or Esc pause the game. `make debug`
+(or `go run ./cmd/game -debug`) lets PageUp/PageDown jump rooms for
+testing. `go run ./cmd/game -level N` skips the title and starts level
+N, `-room N` starts in room N; `-screenshot out.png` saves an early
+frame and exits. A game starts as the original does, with Joe walked
+from the entrance hall into the pyramid. Jumping to a room (`-debug`'s
+PageUp/PageDown, or `-room`) stands Joe on a floor spot away from its
 enemies, and he respawns there.
 
 The first 8 KB of the assembled ROM matches MAME's checksum for the original

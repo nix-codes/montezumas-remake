@@ -2,9 +2,10 @@
 // game in a window and feeds it the keyboard.
 //
 // It starts on the title screen, where 1, 2 or 3 picks the level. Keys:
-// arrows move and climb; space, Z or X jump; Esc is the console's reset
-// button, back to the title. PageUp/PageDown jump to the previous or next
-// room, for testing, standing Joe somewhere safe.
+// arrows move and climb; space, Z or X jump; P, Pause or Esc pause;
+// Ctrl+R is the console's reset button, back to the title; Ctrl+Q quits.
+// With -debug, PageUp/PageDown jump to the previous or next room,
+// standing Joe somewhere safe.
 package main
 
 import (
@@ -55,6 +56,10 @@ type window struct {
 
 	frame      int
 	screenshot string // if set, save frame screenshotFrame here and quit
+	debug      bool   // PageUp/PageDown jump rooms
+
+	paused      bool
+	pausedSound sound.Registers // the chip as the game left it, to restore on resuming
 }
 
 // roomGfx is a room's tile set and sprite images.
@@ -69,6 +74,7 @@ func main() {
 	startRoom := flag.Int("room", -1, "skip the title and start in this room")
 	startLevel := flag.Int("level", 0, "skip the title and start this level")
 	screenshot := flag.String("screenshot", "", "save a PNG of an early frame to this path and exit")
+	debug := flag.Bool("debug", false, "let PageUp/PageDown jump to the previous or next room")
 	flag.Parse()
 
 	r, err := rom.Load(*romPath)
@@ -105,6 +111,7 @@ func main() {
 		background: ebiten.NewImage(screenW, screenH),
 		pixels:     image.NewRGBA(image.Rect(0, 0, screenW, screenH)),
 		screenshot: *screenshot,
+		debug:      *debug,
 	}
 	if *startRoom >= 0 || *startLevel > 0 {
 		w.start(max(*startLevel, 1))
@@ -181,8 +188,13 @@ func (w *window) Update() error {
 	if w.screenshot != "" && w.frame > screenshotFrame {
 		return ebiten.Termination
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	ctrl := ebiten.IsKeyPressed(ebiten.KeyControl)
+	if ctrl && inpututil.IsKeyJustPressed(ebiten.KeyQ) {
+		return ebiten.Termination
+	}
+	if ctrl && inpututil.IsKeyJustPressed(ebiten.KeyR) {
 		w.g = nil
+		w.paused = false
 		sound.TurnOff(w.psg)
 		w.drawnRoom = -1
 	}
@@ -192,7 +204,11 @@ func (w *window) Update() error {
 		return nil
 	}
 	g := w.g
+	if w.updatePause() {
+		return nil
+	}
 	switch {
+	case !w.debug:
 	case inpututil.IsKeyJustPressed(ebiten.KeyPageDown):
 		g.Teleport((g.Room + 1) % len(g.Rooms))
 	case inpututil.IsKeyJustPressed(ebiten.KeyPageUp):
@@ -206,16 +222,47 @@ func (w *window) Update() error {
 		Fire: ebiten.IsKeyPressed(ebiten.KeySpace) || ebiten.IsKeyPressed(ebiten.KeyZ) ||
 			ebiten.IsKeyPressed(ebiten.KeyX),
 	})
-	t := fmt.Sprintf("Montezuma's Revenge - level %d - room %d (row %d, column %d) - lives %d - score %d",
-		g.Level, g.Room, g.Row, g.Col, g.Lives, g.Score)
+	// The HUD shows the score, level and lives; debugging adds where Joe is.
+	t := "Montezuma's Revenge"
+	if w.debug {
+		t = fmt.Sprintf("Montezuma's Revenge - level %d - room %d (row %d, column %d) - lives %d - score %d",
+			g.Level, g.Room, g.Row, g.Col, g.Lives, g.Score)
+	}
 	if g.GameOver {
-		t = "Montezuma's Revenge - game over - Esc for the title screen"
+		t = "Montezuma's Revenge - game over - Ctrl+R for the title screen"
 		if g.Level == 1 && !g.Continued {
-			t = "Montezuma's Revenge - game over - fire to continue, Esc for the title screen"
+			t = "Montezuma's Revenge - game over - fire to continue, Ctrl+R for the title screen"
 		}
 	}
 	w.setTitle(t)
 	return nil
+}
+
+// pauseKeys pause and resume the game.
+var pauseKeys = []ebiten.Key{ebiten.KeyP, ebiten.KeyPause, ebiten.KeyEscape}
+
+// updatePause pauses or resumes the game on a pause key, and reports
+// whether it is paused. The chip is silenced while paused, but still sent
+// empty frames, so the sound picks up on time when the game resumes.
+func (w *window) updatePause() bool {
+	pressed := false
+	for _, k := range pauseKeys {
+		pressed = pressed || inpututil.IsKeyJustPressed(k)
+	}
+	switch {
+	case pressed && !w.paused && !w.g.GameOver:
+		w.paused = true
+		w.pausedSound = w.psg.Registers()
+		sound.TurnOff(w.psg)
+	case pressed && w.paused:
+		w.paused = false
+		w.psg.Set(w.pausedSound)
+	}
+	if w.paused {
+		w.psg.EndFrame()
+		w.setTitle("Montezuma's Revenge - paused - P or Esc to resume, Ctrl+R to reset, Ctrl+Q to quit")
+	}
+	return w.paused
 }
 
 func (w *window) setTitle(t string) {
