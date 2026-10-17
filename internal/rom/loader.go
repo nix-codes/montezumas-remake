@@ -2,17 +2,17 @@ package rom
 
 import "bytes"
 
-// The game loads graphics through SUB_AE00, which takes its arguments
+// The game loads graphics through LOADER, which takes its arguments
 // inline after the CALL:
 //
 //	LD   A, table        ; BIOS PUT_VRAM table code
-//	CALL SUB_AE00
+//	CALL LOADER
 //	DW   src : DB index, count   ; repeated
 //	DB   xx, $00                 ; terminator (src high byte = 0)
 //
 // Each record is passed to the BIOS PUT_VRAM routine.
 
-// LoaderAddr is the address of SUB_AE00.
+// LoaderAddr is the address of LOADER.
 const LoaderAddr = 0xAE00
 
 // Record copies Count table items from Src into the table at Index.
@@ -22,14 +22,14 @@ type Record struct {
 	Count int
 }
 
-// LoaderCall is one CALL SUB_AE00 site and its inline records.
+// LoaderCall is one CALL LOADER site and its inline records.
 type LoaderCall struct {
 	Addr    uint16 // address of the CALL instruction
 	Table   int    // PUT_VRAM table code from the preceding LD A,n; -1 if none
 	Records []Record
 }
 
-// LoaderCalls finds every CALL SUB_AE00 in the ROM and decodes its records.
+// LoaderCalls finds every CALL LOADER in the ROM and decodes its records.
 func (r *ROM) LoaderCalls() []LoaderCall {
 	call := []byte{0xCD, LoaderAddr & 0xFF, LoaderAddr >> 8}
 	var calls []LoaderCall

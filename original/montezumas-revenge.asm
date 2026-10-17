@@ -5,142 +5,99 @@
 ; Modified 2026-10-15 for montezuma-remake: the room loader ($A067-$A547),
 ; room data and tile tables ($943C-$A066) relabelled, recommented and
 ; turned back into code where left as bytes; legend and RAM notes corrected.
+; Modified 2026-10-17: the rest of the ROM likewise: code left as bytes
+; turned back into code, data laid out as tables and graphics, every
+; routine named and its comments rewritten from what the code does.
 ; Assembles to the same bytes.
 ;
-; LEGEND
+; CONTENTS
 ;
-; --- ROM LAYOUT (12 KB: $8000-$AFFF) ---
+;   $8000  cartridge header; CART_ENTRY ($8021): JP NMI
+;   $8025  START: boot
+;   $8116  TITLE_SCREEN, then a new game
+;   $81DC  BUILD_TILE_TABLES: the four animated pattern tables
+;   $8293  title text, tile lists, LOAD_TILE_COLOURS ($8308),
+;          MIRROR_TILES ($8314), MIRROR_SPRITES ($8352), LOAD_TILESET ($8392)
+;   $841E  GRAPHICS: boot colours, tile and sprite patterns
+;   $88D1  MOVE_TASK: Joe, every frame; JOE_STATES ($8913) and the handlers
+;   $8D80  APPLY_VELOCITY, JOE_MOVE ($8DE8), CHANGE_ROOM ($8E0C),
+;          SAVE_JOE ($8E7E), ROOM_COLOURS ($8EB0)
+;   $8F5F  ITEM_TASK: doors, creatures, pickups
+;   $90E3  JUMP_PRESSED, IS_FLOOR ($9122), JOE_TILES ($9156),
+;          LOAD_ROOM_NOW ($919A)
+;   $91E5  CONTACT_TASK: the amulet, and enemies touching Joe
+;   $92DC  JOE_SPRITES; Joe's frames ($9378), JUMP_ARC ($93AE),
+;          ROW_COLOURS ($93C0), tile tables ($93FF-$9443)
+;   $9444  ROOM DATA: CMD_GROUPS, ROOM_LISTS ($9477), TILE_GROUPS ($9FD1)
+;   $A067  LOAD_ROOM: draw a room from its command list
+;   $A548  DRAW_INVENTORY, ADD_ITEM ($A56C)
+;   $A59D  NEW_GAME, MAIN_LOOP ($A5CA), TASKS ($A8A1)
+;   $A60B  TREASURE_SCREEN
+;   $A69F  MOVE_ENEMIES ($A7A1), MOVE_CLIMBER ($A6B3)
+;   $A8B7  VRAM_LOCK, BARRIER_TASK ($A8D6), BARRIER_PATTERNS ($A92F)
+;   $A9B3  NMI: the frame interrupt
+;   $AA5D  DRAW_HUD_BOXES, DRAW_LIVES ($AABB), MIRROR_ROOM ($AB29),
+;          BOUNCE_ARC ($ABB3)
+;   $AC1A  SOUND: PLAY_SOUND, SOUND_TICK ($AC6D), SOUND_EFFECTS ($AD0B)
+;   $AE00  LOADER: inline records to video memory; VRAM helpers,
+;          TILE_ROWS ($AEA7), DRAW_SCORE ($AEFE), ADD_SCORE ($AF70),
+;          TILE_AT ($AFE3)
 ;
-;   $8021  CART_ENTRY: JP NMI             line   236
-;   $8025  START -- boot entry            line   255
-;   ~$8DA2 LOC_8DA2 -- game state mach.  line   853
-;   ~$8EB0 DELAY_LOOP_8EB0 -- frame body line   934
-;   ~$AA00 NMI handler                   line  4008
-;   ~$AE00 SUB_AE00 -- VRAM data writer  line  4505
+; The main loop runs four tasks from TASKS: CONTACT_TASK every 2 frames,
+; ITEM_TASK every 4, MOVE_TASK and BARRIER_TASK every frame. The frame
+; interrupt loads rooms, animates the tiles and plays the sound.
 ;
-; --- BOOT / INIT SEQUENCE ($8025) ---
+; RAM
 ;
-;   START ($8025)             line   255  zero $7000-$73FF, SP=$73C0
-;   SUB_8413 ($8413)          line   529  FILL_VRAM at $0000, length $4000
-;   DELAY_LOOP_827F ($827F)   line   445  copy 16 bitmap pairs to RAM
-;
-; --- NMI HANDLER (~$AA00) ---
-;
-;   CART_ENTRY ($8021)        line   236  JP NMI (all interrupts -> NMI)
-;   NMI (~$AA00)              line  4008  saves AF,BC,DE,HL,IX,IY + alts
-;                                         $70B1 bit 7: re-entry guard
-;                                         $70B1 bit 3: SUB_919A (room change)
-;                                         $70B1 bit 4: DELAY_LOOP_8EB0 (frame)
-;                                         $705F bit 3: SUB_A60B (room render)
-;
-; --- FRAME GAME BODY ($8EB0) ---
-;
-;   DELAY_LOOP_8EB0 ($8EB0)   line   934  per-frame body (from NMI bit 4)
-;   SUB_8308 ($8308)          line   480  render room tiles to VRAM
-;   TABLE_BYTE ($A540)        line  3673  A = (HL + A); here the table at $93C0
-;   SUB_908F ($908F)          line  1031  item pickup: CPIR $71B2 table
-;
-; --- GAME STATE / ROOM TRANSITIONS ---
-;
-;   LOC_8DA2 ($8DA2)          line   853  game state dispatch ($7079)
-;   SUB_8DC2 ($8DC2)          line   868  DEC $7049 (life counter)
-;   LOC_8DD3 ($8DD3)          line   877  update $7300/$7304 player tile X/Y
-;   LOC_929B ($929B)          line  1204  inner-loop end: JP LOC_8DA2
-;
-; --- ROOM RENDERER / ENEMY PLACEMENT ---
-;
-;   SUB_A60B ($A60B)          line  3732  room setup (from NMI bit 3 of $705F)
-;   SUB_919A ($919A)          line  1082  room change: clear enemy sprites, LOAD_ROOM
-;
-; --- ROOM LOADER ($A067) ---
-;
-;   LOAD_ROOM ($A067)         line  2865  draw a room by running its command list
-;   ROOM_LISTS ($9477)        line  1383  each room's command list (ROOM DATA notes)
-;   CMD_GROUPS ($9444)        line  1329  tile group of each command
-;   TILE_GROUPS ($9FD1)       line  2770  tiles the commands draw; HUD icons
-;   PLACE_ENEMY ($A405)       line  3464  enemy object + sprite from a command
-;   NEXT_THING_GONE ($A514)   line  3637  test the room's "gone" bitmap ($70C0)
-;   SUB_92BE ($92BE)          line  1231  mark a thing gone (picked up, killed)
-;   DRAW_INVENTORY ($A548)    line  3685  HUD inventory: background + icons
-;
-; --- VRAM DATA WRITER ---
-;
-;   SUB_AE00 ($AE00)          line  4505  POP HL: return addr = data ptr
-;   SUB_AE2E ($AE2E)          line  4546  set VRAM write addr + PUT_VRAM
-;   SUB_AE25 ($AE25)          line  4540  set VRAM write addr + FILL_VRAM
-;   SUB_AEA7 ($AEA7)          line  4588  write C tiles from HL at DE, B times
-;   SUB_A8B7 ($A8B7)          line  3883  VRAM-lock enter: SET $705F bit 1
-;   SUB_A8C3 ($A8C3)          line  3892  VRAM-lock exit: DEC $70AF
-;
-; --- SOUND SYSTEM ---
-;
-;   SUB_AC6D ($AC6D)          line  4376  sound sequencer: OUT $FF SN76489A
-;   SUB_A92F ($A92F)          line  3920  SN76489A byte writer (4-frame cycle)
-;   SUB_AC1A ($AC1A)          line  4317  sound trigger with priority ($702C)
-;   SUB_AF70 ($AF70)          line  4731  BCD score add (IY=$7017 digits)
-;   SUB_AEFE ($AEFE)          line  4656  score row renderer
-;   SUB_AF54 ($AF54)          line  4707  display lives count
-;
-; --- KEY RAM ---
-;
-;   $7000  WORK_BUFFER flags (bit 0=active  bit 1=VRAM-busy)
-;   $7005  JOYSTICK_BUFFER (BIOS POLLER output)
-;   $7011  NMI sub-frame counter (1-4, SN76489A sound cycle)
-;   $7047  room data cursor pointer (INC each NMI)
-;   $7049  life counter
-;   $702C  sound channel flags (bit 7=active  bit 5=seq  bit 6=repeat)
-;   $705F  game flags (bit 1=VRAM-busy  bit 3=room-setup  bit 5=tile-skip)
-;   $7079  Joe's state (state machine at $8901)
-;   $70AF  VRAM-lock nesting counter
-;   $70B1  NMI flags (bit 7=re-entry  bit 3=score  bit 4=game-body)
-;   $7097  frame counter
-;   $71B2  inventory (6 bytes CPIR)     $7207  main loop frame-sync byte
-;   $7300  sprite table: Joe's 2 sprites, then the enemies' from $7308
-;   $7015  room number       $71A6  level, from 1
-;   $71A7  pyramid row       $71A8  pyramid column
-;   $7086  enemy objects (2 bytes each, $FF free)
-;   $70C0  "gone" bitmap: 2 bytes per room, a bit per thing (NEXT_THING_GONE)
-;   $72C0  contact list: a thing's position, or an enemy's sprite offset
-;   $7190-$71B1  room loader state (see LOAD_ROOM)
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
-;
+;   $7000  flags: bit 0 set by LOAD_ROOM_NOW (never tested); bits 2 and 4
+;          TILE_ROWS's modes; bit 3 tells MARK_GONE a creature killed Joe;
+;          bit 5 barriers off; bit 6 disappearing floors gone
+;   $7002  MIRROR_ROOM's row count        $7011  tile animation step (bit 7:
+;   $7012  ITEM_TASK countdown                   wait for ITEM_TASK)
+;   $7013  REFLECT_LIST's mode            $7015  room number
+;   $7017  score, 3 BCD bytes             $702C  sound player (PLAY_SOUND)
+;   $7047  the treasure room's random pointer, moved every frame
+;   $7049  lives, Joe's own included      $704A  amulet timer
+;   $704B  Joe's sprites as he entered the room (8 bytes)
+;   $7057  tiles around a sprite's feet (READ_TILES): 3 at its body, 3 at
+;          its feet
+;   $705F  flags: bit 0 game over continued once; bit 1 VRAM busy
+;          (VRAM_LOCK); bit 2 walking Joe into the pyramid; bit 3 set up a
+;          treasure screen; bit 5 in the treasure room; bit 6 Joe not moving
+;   $7068  MOVE_TASK countdown            $7072  Joe's jump counter
+;   $7073  CONTACT_TASK countdown         $7074  BARRIER_TASK countdown
+;   $7075  fire button latch              $7076  Joe's DX, DY ($7077)
+;   $7078  Joe's facing (last DX)         $7079  Joe's state (JOE_STATES)
+;   $707A  enemies in the room            $707C  Y where a fall began
+;   $707D  Joe's DY, DX, state, facing, fire latch as he entered the room
+;   $7084  scratch (READ_TILES's Y and X, and others)
+;   $7086  enemy objects: 2 bytes each, up to $FF (MOVE_ENEMIES)
+;   $7096  barrier frame, 3-0             $7097  frame counter
+;   $7098  STEP_BARRIER's toggle          $70A8  BARRIER_TASK's counter
+;   $70A9  death timer                    $70AA  step count, 7-0
+;   $70AB  frame count, 3-0               $70AC  treasure room timer
+;   $70AD  frames to the next step        $70AF  VRAM_LOCK depth
+;   $70B1  frame interrupt flags: bit 0 DRAW_DIGITS's non-zero digit; bit 3
+;          load a room; bit 4 recolour it; bit 7 inside the interrupt
+;   $70B2  Joe's climb-down-onto-a-ladder counter
+;   $70B3  DISPLAY_OFF depth              $70BD  points to add (BCD)
+;   $70C0  "gone" bitmap: 2 bytes per room, a bit per thing
+;   $7190  LOAD_ROOM's state, to $71B1; $71B0/$71B1 also the tile position
+;          READ_TILES found
+;   $71A6  level, 1-9                     $71A7  row ($71A8 column)
+;   $71B2  inventory: 6 item codes, $FF free (the last always free)
+;   $7200  MIRROR_ROOM's row buffers, to $729F (at boot, the checkered
+;          sprite copies)
+;   $7207  the main loop's frame-sync byte
+;   $72C0  contact list: from $72C2 an entry per thing (its name table
+;          position, or an enemy's sprite offset and $FF), up to $FE $FE
+;   $72E0  sprite order table             $7300  local sprite table:
+;   $73BF  the stack, growing down               Joe's 2 sprites, enemies'
+;   BIOS:  $73C7 MUX_SPRITES, $73EE joystick (the right button merged in by
+;          READ_CONTROLLERS), $73F0 keypad, $73F9 the pattern table the
+;          BIOS writes to
+; =============================================================================
+
 BOOT_UP:                 EQU $0000
 BIOS_NMI:                EQU $0066
 NUMBER_TABLE:            EQU $006C
@@ -202,1101 +159,2796 @@ CONTROLLER_02:           EQU $00F5
 CONTROLLER_01:           EQU $00FC
 SOUND_PORT:              EQU $00FF
 
-; RAM DEFINITIONS ***************************
-
-WORK_BUFFER:             EQU $7000
-JOYSTICK_BUFFER:         EQU $7005
-CONTROLLER_BUFFER:       EQU $702B
-STACKTOP:                EQU $73B9
-
 FNAME "output\MONTEZUMA-S-REVENGE-1984-NEW.ROM"
 CPU Z80
 
     ORG     $8000
 
-    DW      $AA55                           ; cart magic
-    DB      $00, $73                        ; cart header: NMI vector lo byte ($73=hi, $00=lo -> $7300)
-    DB      $E0, $72                        ; cart header: RST $30 vector lo/hi ($72E0)
-    DB      $10, $72                        ; cart header: RST $38 vector lo/hi ($7210)
-    DW      JOYSTICK_BUFFER                 ; BIOS POLLER writes controller state here
+; =============================================================================
+; CARTRIDGE HEADER
+; $55,$AA (rather than $AA,$55) makes the BIOS skip its title screen and
+; start the game at once. The words after it tell the BIOS where the game
+; keeps its sprite tables, work buffer and controller map in RAM.
+; =============================================================================
+    DW      $AA55                           ; bytes $55, $AA: no BIOS title screen
+    DW      $7300                           ; local sprite table: Joe's two sprites, then the enemies'
+    DW      $72E0                           ; sprite order table (INIT_SPR_NM_TBL, WR_SPR_NM_TBL)
+    DW      $7210                           ; BIOS work buffer (unused)
+    DW      $7005                           ; controller map for the BIOS POLLER (unused)
     DW      START                           ; start address
-    DB      $C9, $00, $00, $C9, $00, $00, $C9, $00 ; cart header: RST vectors -- $C9 RET pads (entries 0-2)
-    DB      $00, $C9, $00, $00, $C9, $00, $00, $C9 ; cart header: RST vectors -- $C9 RET pads (entries 3-5)
-    DB      $00, $00, $ED, $4D, $00         ; cart header: RST tail -- RETN opcode + padding
+    DB      $C9, $00, $00                   ; RST $08-$30: unused, each a RET
+    DB      $C9, $00, $00
+    DB      $C9, $00, $00
+    DB      $C9, $00, $00
+    DB      $C9, $00, $00
+    DB      $C9, $00, $00
+    RETI                                    ; maskable interrupt (unused)
+    DB      $00
 
-; =============================================================================
-; NMI ENTRY VECTOR -- CART_ENTRY ($8021)
-; Cart header points $8021 as the NMI vector.  The handler here is simply:
-;   JP NMI
-;   DB $0B  (padding byte)
-; The real NMI handler is at label NMI (~$AA00).  On every VSYNC the BIOS
-; jumps here, which redirects to NMI where all registers are saved and the
-; frame game logic runs.
-; =============================================================================
+; NMI vector: the frame interrupt, at every vertical blank.
 CART_ENTRY:
-    JP      NMI                             ; JP NMI  -- all VSYNC interrupts routed here
-    DB      $0B                             ; CART_ENTRY padding byte ($0B)
-
+    JP      NMI
+    DB      $0B                             ; the game's name for the BIOS title screen would start here
 ; =============================================================================
-; BOOT ENTRY -- START ($8025)
-; ColecoVision BIOS jumps here after power-on.
-;   LD HL,WORK_BUFFER / LD BC,$03FF / LD (HL),$00 / LDIR
-;     -> zero-fills $7000-$73FF (RAM workspace)
-;   LD SP,$73C0          set stack pointer
-;   LD BC,$0100 / CALL WRITE_REGISTER  VDP register 1 = $00 (display off)
-;   CALL SUB_8413        FILL_VRAM $4000 bytes at $0000 (clear VRAM)
-;   CALL MODE_1          set TMS9918 mode 1
-;   LD BC,$0701 / CALL WRITE_REGISTER  VDP register 7 = $01 (border color)
-;   CALL LOAD_ASCII      load BIOS font to VRAM
-;   CALL DELAY_LOOP_827F (x2) copy sprite bitmaps from ROM to $7200/$7220
-;   CALL SUB_AE00        VRAM data writer (POP HL trick -- inline data follows)
-;     -> loads all tile patterns, sprite data, room layout to VRAM
+; START ($8025): the BIOS jumps here at power-on. Clear the RAM, set up the
+; video chip (Graphics I: patterns $0000, names $1800, colours $2000, sprite
+; attributes $1B00, sprite patterns $3800), place Joe's sprites and load the
+; sprite patterns, then fall into the title screen.
 ; =============================================================================
 START:
-    LD      HL, WORK_BUFFER                 ; HL = $7000 (WORK_BUFFER -- start of RAM workspace)
-    LD      BC, $03FF                       ; BC = $03FF (1023 bytes to zero-fill)
-    LD      (HL), $00                       ; (HL) = $00 (seed byte for LDIR)
-    PUSH    HL                              ; PUSH HL
-    POP     DE                              ; POP DE  -> DE = $7001 (destination = next byte)
-    INC     DE                              ; INC DE (DE now points one past HL)
-    LDIR                                    ; LDIR: zero-fill $7000-$73FF (1024 bytes)
-    LD      SP, $73C0                       ; SP = $73C0 (game stack pointer)
-    LD      BC, $0100                       ; BC = $0100 (VDP reg 1, value $00)
-    CALL    WRITE_REGISTER                  ; CALL WRITE_REGISTER: disable VDP display
-    CALL    SUB_8413                        ; CALL SUB_8413: FILL_VRAM $4000 bytes at $0000 (clear all VRAM)
-    CALL    MODE_1                          ; CALL MODE_1: set TMS9918 graphics mode 1
-    LD      BC, $0701                       ; BC = $0701 (VDP reg 7, border colour $01)
-    CALL    WRITE_REGISTER                  ; CALL WRITE_REGISTER: set border colour
-    CALL    LOAD_ASCII                      ; CALL LOAD_ASCII: load BIOS font to VRAM
-    LD      HL, $73C7                       ; RAM $73C7
-    LD      (HL), $01                       ; LD (HL),$01: set PUT_VRAM active flag at $73C7
-    LD      HL, $88C9                       ; LD HL,$88C9: source address for PUT_VRAM
-    LD      DE, BOOT_UP                     ; LD DE,BOOT_UP: VRAM dest = $0000 (BOOT_UP)
-    LD      IY, $0002                       ; LD IY,$0002: byte count = 2 for PUT_VRAM
-    LD      A, $00                          ; LD A,$00: A = $00 (PUT_VRAM mode)
-    CALL    PUT_VRAM                        ; CALL PUT_VRAM: write 2 bytes to VRAM $0000
-    LD      HL, $73C7                       ; RAM $73C7
-    LD      (HL), $00                       ; LD (HL),$00: clear PUT_VRAM active flag
-    LD      A, $08                          ; LD A,$08: A = $08 (8 sprites)
-    CALL    INIT_SPR_NM_TBL                 ; CALL INIT_SPR_NM_TBL: init 8-slot sprite name table
-    LD      A, $08                          ; LD A,$08: A = $08 (8 sprite entries)
-    CALL    WR_SPR_NM_TBL                   ; CALL WR_SPR_NM_TBL: write sprite name table to VRAM
-    LD      DE, $7200                       ; DE = $7200 (sprite bitmap RAM destination, first set)
-    LD      HL, $86C8                       ; HL = $86C8 (ROM source: first sprite bitmap block)
-    CALL    DELAY_LOOP_827F                 ; CALL DELAY_LOOP_827F: copy 16 pairs AND $AA55 -> $7200
-    LD      DE, $7220                       ; DE = $7220 (sprite bitmap RAM destination, second set)
-    LD      HL, $86A8                       ; HL = $86A8 (ROM source: second sprite bitmap block)
-    CALL    DELAY_LOOP_827F                 ; CALL DELAY_LOOP_827F: copy 16 pairs AND $AA55 -> $7220
-    LD      A, $01                          ; A = $01 (block selector for inline VRAM data)
-    CALL    SUB_AE00                        ; CALL SUB_AE00 ($01): POP HL trick -- inline data follows (bulk VRAM init)
-    XOR     B                               ; inline data: SUB_AE00 $01 VRAM block 1 byte 0
-    ADD     A, (HL)                         ; inline data: SUB_AE00 $01 VRAM block 1 byte 1
-    INC     (HL)                            ; inline data: SUB_AE00 $01 VRAM block 1 byte 2
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 1 byte 3
-    XOR     B                               ; inline data: SUB_AE00 $01 VRAM block 1 byte 4
-    ADD     A, (HL)                         ; inline data: SUB_AE00 $01 VRAM block 1 byte 5
-    JR      C, LOC_8090                     ; inline data: SUB_AE00 $01 VRAM block 1 byte 6
-    XOR     B                               ; inline data: SUB_AE00 $01 VRAM block 1 byte 7
-    ADD     A, (HL)                         ; inline data: SUB_AE00 $01 VRAM block 2 byte 2
-    INC     A                               ; inline data: SUB_AE00 $01 VRAM block 2 byte 0
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 2 byte 3
+    LD      HL, $7000                       ; clear $7000-$73FF
+    LD      BC, $03FF
+    LD      (HL), $00
+    PUSH    HL
+    POP     DE
+    INC     DE
+    LDIR
+    LD      SP, $73C0                       ; the stack grows down from $73BF
+    LD      BC, $0100                       ; register 1 = 0: display off
+    CALL    WRITE_REGISTER
+    CALL    CLEAR_VRAM                      ; clear all 16 KB of VRAM
+    CALL    MODE_1
+    LD      BC, $0701                       ; register 7 = $01: black backdrop
+    CALL    WRITE_REGISTER
+    CALL    LOAD_ASCII                      ; the BIOS font into the pattern table
 
-LOC_8090:
-    XOR     B                               ; inline data: SUB_AE00 $01 VRAM block 3 byte 0
-    ADD     A, (HL)                         ; inline data: SUB_AE00 $01 VRAM block 3 byte 1
+; Joe's two sprites, at the top of the entrance hall's left pole, into
+; the local sprite table: with BIOS MUX_SPRITES set, sprite attribute
+; writes go there.
+    LD      HL, $73C7                       ; MUX_SPRITES
+    LD      (HL), $01
+    LD      HL, JOE_START_SPRITES
+    LD      DE, $0000
+    LD      IY, $0002
+    LD      A, $00                          ; table 0: sprite attributes
+    CALL    PUT_VRAM
+    LD      HL, $73C7
+    LD      (HL), $00
+    LD      A, $08                          ; sprite order 0-7...
+    CALL    INIT_SPR_NM_TBL
+    LD      A, $08                          ; ...and write the 8 sprites to VRAM
+    CALL    WR_SPR_NM_TBL
+    LD      DE, $7200                       ; checkered copies of Joe's legs...
+    LD      HL, GFX_JOE_LEGS
+    CALL    DITHER_COPY
+    LD      DE, $7220                       ; ...and body, for the zapped frames
+    LD      HL, GFX_JOE_BODY
+    CALL    DITHER_COPY
+    LD      A, $01                          ; table 1: sprite patterns, Joe's and the enemies'
+    CALL    LOADER
+    DW      GFX_JOE_BODY                    ; Joe's body: standing right (and walking)
+    DB      $34, 4
+    DW      GFX_JOE_BODY                    ; copies no frame uses
+    DB      $38, 4
+    DW      GFX_JOE_BODY
+    DB      $3C, 4
+    DW      GFX_JOE_BODY                    ; jumping right: the standing body...
+    DB      $4C, 4
+    DW      $8710                           ; ...its lower left quarter
+    DB      $4D, 1
+    DW      $8718                           ; ...its lower right quarter
+    DB      $4F, 1
+    DW      GFX_JOE_CLIMB                   ; on a ladder
+    DB      $54, 4
+    DW      GFX_JOE_CLIMB                   ; on a rope: the ladder body...
+    DB      $5C, 4
+    DW      $8780                           ; ...lower left quarter
+    DB      $5D, 1
+    DW      $8788                           ; ...lower right quarter
+    DB      $5F, 1
+    DW      GFX_JOE_CLIMB                   ; on a pole: the ladder body
+    DB      $64, 4
+    DW      GFX_JOE_DEAD                    ; lying dead from a fall
+    DB      $68, 4
+    DW      GFX_JOE_BODY                    ; walking right: the standing body...
+    DB      $6C, 4
+    DW      GFX_JOE_WALK                    ; ...lower left quarter
+    DB      $6D, 1
+    DW      $86F0                           ; ...lower right quarter
+    DB      $6F, 1
+    DW      GFX_JOE_BURNT                   ; burnt (his ghost, a single sprite)
+    DB      $78, 4
+    DW      GFX_JOE_LEGS                    ; Joe's hat, face and legs: standing right
+    DB      $98, 4
+    DW      GFX_JOE_LEGS                    ; walking right: the standing legs...
+    DB      $9C, 4
+    DW      $8622                           ; ...lower left quarter
+    DB      $9D, 1
+    DW      $86F8                           ; ...lower right quarter
+    DB      $9F, 1
+    DW      GFX_JOE_LEGS                    ; walking right, another frame...
+    DB      $A0, 4
+    DW      $8700                           ; ...lower left quarter
+    DB      $A1, 1
+    DW      $8708                           ; ...lower right quarter
+    DB      $A3, 1
+    DW      GFX_JOE_JUMP                    ; jumping right
+    DB      $B0, 4
+    DW      GFX_JOE_LADDER_LEGS             ; ladder
+    DB      $B8, 4
+    DW      GFX_JOE_ROPE_LEGS               ; rope
+    DB      $C0, 4
+    DW      GFX_JOE_POLE_LEGS               ; pole
+    DB      $C8, 4
+    DW      GFX_JOE_DEAD_LEGS               ; lying dead from a fall, two frames: the first
+    DB      $CC, 4
+    DW      GFX_JOE_DEAD_LEGS               ; the second: the first...
+    DB      $D0, 4
+    DW      $8808                           ; ...its upper left quarter
+    DB      $D0, 1
+    DW      $8810                           ; ...upper right quarter
+    DB      $D2, 1
+    DW      $7200                           ; zapped: the checkered legs and body
+    DB      $D4, 8
+    DW      GFX_SKULL                       ; skull
+    DB      $0C, 4
+    DW      GFX_SKULL_ROLL                  ; rolling skull, 45 degrees
+    DB      $10, 4
+    DW      GFX_SKULL_ROLL_2                ; rolling skull, 90 degrees
+    DB      $14, 4
+    DW      GFX_SPIDER                      ; spider
+    DB      $2C, 4
+    DB      $00, $00                        ; end
 
-LOC_8092:
-    LD      C, H                            ; inline data: SUB_AE00 $01 VRAM block 3 byte 2
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 4 byte 0
-    DJNZ    LOC_801D                        ; inline data: SUB_AE00 $01 VRAM block 4 byte 1
-    LD      C, L                            ; inline data: SUB_AE00 $01 VRAM block 4 byte 2
-    LD      BC, $8718                       ; inline data: SUB_AE00 $01 VRAM block 4 byte 3
-    LD      C, A                            ; inline data: SUB_AE00 $01 VRAM block 4 byte 4
-    LD      BC, $8740                       ; inline data: SUB_AE00 $01 VRAM block 4 byte 5
-    LD      D, H                            ; inline data: SUB_AE00 $01 VRAM block 4 byte 6
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 4 byte 7
-    LD      B, B                            ; inline data: SUB_AE00 $01 VRAM block 5 byte 0
-    ADD     A, A                            ; inline data: SUB_AE00 $01 VRAM block 5 byte 1
-    LD      E, H                            ; inline data: SUB_AE00 $01 VRAM block 5 byte 2
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 5 byte 3
-    ADD     A, B                            ; inline data: SUB_AE00 $01 VRAM block 5 byte 4
-    ADD     A, A                            ; inline data: SUB_AE00 $01 VRAM block 5 byte 5
-    LD      E, L                            ; inline data: SUB_AE00 $01 VRAM block 5 byte 6
-    LD      BC, $8788                       ; inline data: SUB_AE00 $01 VRAM block 5 byte 7
-    LD      E, A                            ; inline data: SUB_AE00 $01 VRAM block 6 byte 0
-    LD      BC, $8740                       ; inline data: SUB_AE00 $01 VRAM block 6 byte 1
-    LD      H, H                            ; inline data: SUB_AE00 $01 VRAM block 6 byte 2
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 6 byte 3
-    LD      D, D                            ; inline data: SUB_AE00 $01 VRAM block 6 byte 4
-    ADC     A, B                            ; inline data: SUB_AE00 $01 VRAM block 6 byte 5
-    LD      L, B                            ; inline data: SUB_AE00 $01 VRAM block 6 byte 6
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 6 byte 7
-    XOR     B                               ; inline data: SUB_AE00 $01 VRAM block 7 byte 0
-    ADD     A, (HL)                         ; inline data: SUB_AE00 $01 VRAM block 7 byte 1
-    LD      L, H                            ; inline data: SUB_AE00 $01 VRAM block 7 byte 2
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 7 byte 3
-    RET     PE                              ; inline data: SUB_AE00 $01 VRAM block 7 byte 4
-    ADD     A, (HL)                         ; inline data: SUB_AE00 $01 VRAM block 7 byte 5
-    LD      L, L                            ; inline data: SUB_AE00 $01 VRAM block 8 byte 0
-    LD      BC, $86F0                       ; inline data: SUB_AE00 $01 VRAM block 8 byte 1
-    LD      L, A                            ; inline data: SUB_AE00 $01 VRAM block 8 byte 2
-    LD      BC, $8872                       ; inline data: SUB_AE00 $01 VRAM block 8 byte 3
-    LD      A, B                            ; inline data: SUB_AE00 $01 VRAM block 8 byte 4
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 8 byte 5
-    RET     Z                               ; inline data: SUB_AE00 $01 VRAM block 8 byte 6
-    ADD     A, (HL)                         ; inline data: SUB_AE00 $01 VRAM block 8 byte 7
-    SBC     A, B                            ; inline data: SUB_AE00 $01 VRAM block 9 byte 0
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 9 byte 1
-    RET     Z                               ; inline data: SUB_AE00 $01 VRAM block 9 byte 2
-    ADD     A, (HL)                         ; inline data: SUB_AE00 $01 VRAM block 9 byte 3
-    SBC     A, H                            ; inline data: SUB_AE00 $01 VRAM block 9 byte 4
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 9 byte 5
-    LD      ($9D86), HL                     ; inline data: SUB_AE00 $01 VRAM block 10 byte 0
-    LD      BC, $86F8                       ; inline data: SUB_AE00 $01 VRAM block 10 byte 1
-    SBC     A, A                            ; inline data: SUB_AE00 $01 VRAM block 10 byte 2
-    LD      BC, $86C8                       ; inline data: SUB_AE00 $01 VRAM block 10 byte 3
-    AND     B                               ; inline data: SUB_AE00 $01 VRAM block 10 byte 4
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 10 byte 5
-    NOP                                     ; inline data: SUB_AE00 $01 VRAM block 11 byte 0
-    ADD     A, A                            ; inline data: SUB_AE00 $01 VRAM block 11 byte 1
-    AND     C                               ; inline data: SUB_AE00 $01 VRAM block 11 byte 2
-    LD      BC, $8708                       ; inline data: SUB_AE00 $01 VRAM block 11 byte 3
-    AND     E                               ; inline data: SUB_AE00 $01 VRAM block 11 byte 4
-    LD      BC, $8720                       ; inline data: SUB_AE00 $01 VRAM block 11 byte 5
-    OR      B                               ; inline data: SUB_AE00 $01 VRAM block 12 byte 0
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 12 byte 1
-    LD      H, B                            ; inline data: SUB_AE00 $01 VRAM block 12 byte 2
-    ADD     A, A                            ; inline data: SUB_AE00 $01 VRAM block 12 byte 3
-    CP      B                               ; inline data: SUB_AE00 $01 VRAM block 12 byte 4
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 12 byte 5
-    SUB     B                               ; inline data: SUB_AE00 $01 VRAM block 12 byte 6
-    ADD     A, A                            ; inline data: SUB_AE00 $01 VRAM block 12 byte 7
-    RET     NZ                              ; inline data: SUB_AE00 $01 VRAM block 13 byte 0
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 13 byte 1
-    OR      B                               ; inline data: SUB_AE00 $01 VRAM block 13 byte 2
-    ADD     A, A                            ; inline data: SUB_AE00 $01 VRAM block 13 byte 3
-    RET     Z                               ; inline data: SUB_AE00 $01 VRAM block 13 byte 4
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 13 byte 5
-    RET     PE                              ; inline data: SUB_AE00 $01 VRAM block 13 byte 6
-    ADD     A, A                            ; inline data: SUB_AE00 $01 VRAM block 13 byte 7
-    CALL    Z, $E804                        ; inline data: SUB_AE00 $01 VRAM block 14 byte 0
-    ADD     A, A                            ; inline data: SUB_AE00 $01 VRAM block 14 byte 1
-    RET     NC                              ; inline data: SUB_AE00 $01 VRAM block 14 byte 2
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 14 byte 3
-    EX      AF, AF'                         ; inline data: SUB_AE00 $01 VRAM block 14 byte 4
-    ADC     A, B                            ; inline data: SUB_AE00 $01 VRAM block 14 byte 5
-    RET     NC                              ; inline data: SUB_AE00 $01 VRAM block 14 byte 6
-    LD      BC, $8810                       ; inline data: SUB_AE00 $01 VRAM block 14 byte 7
-    JP      NC, $0001                       ; inline data: SUB_AE00 $01 VRAM block 15 byte 0
-    LD      (HL), D                         ; inline data: SUB_AE00 $01 VRAM block 15 byte 1
-    CALL    NC, SUB_9208                    ; inline data: SUB_AE00 $01 VRAM block 15 byte 2
-    ADC     A, B                            ; inline data: SUB_AE00 $01 VRAM block 15 byte 3
-    INC     C                               ; inline data: SUB_AE00 $01 VRAM block 15 byte 4
-    INC     B                               ; inline data: SUB_AE00 $01 VRAM block 15 byte 5
-    JR      LOC_8092                        ; inline data: SUB_AE00 $01 VRAM block 15 end
-    DB      $10, $04, $36, $88, $14, $04, $DA, $85 ; SUB_AE00 $01 tbl: entry [C=$10,cnt=4,vram=$88,str=$36]
-    DB      $2C, $04, $00, $00, $CD, $D6, $1F, $CD ; SUB_AE00 $01 tbl: [C=$2C,cnt=4,END] terminator + inline Z80
-    DB      $7F, $1F, $11, $41, $00, $21, $80, $00 ; SUB_AE00 $01 inline Z80: LD HL,$1F7F / LD DE,$0041 ...
-    DB      $01, $1A, $00, $3E, $03, $CD, $73, $1F ; SUB_AE00 $01 inline Z80: LD HL,$0080 / LD BC,$001A ...
-    DB      $CD, $08, $83, $3E, $A0, $21, $10, $20 ; SUB_AE00 $01 inline Z80: LD A,$03 / CALL $1F73 ...
-    DB      $11, $0E, $00, $CD, $82, $1F, $3E, $02 ; SUB_AE00 $01 inline Z80: CALL $8308 / LD A,$A0 ...
-    DB      $CD, $00, $AE, $AA, $82, $48, $10, $BA ; SUB_AE00 $01 inline Z80: LD HL,$2010 / LD DE,$000E ...
-    DB      $82, $8C, $08, $DE, $82, $C6, $15, $F3 ; SUB_AE00 $01 inline Z80: CALL $1F82 / LD A,$02 ...
-    DB      $82, $E6, $15, $00, $00, $21, $C2, $82 ; SUB_AE00 $01 inline Z80: CALL $AE00 -- nested VRAM write
-    DB      $11, $2A, $01, $01, $0D, $01, $CD, $A7 ; SUB_AE00 $01 inline Z80: nested block entries (4 entries)
-    DB      $AE, $21, $D0, $82, $11, $4A, $01, $01 ; SUB_AE00 $01 inline Z80: nested entries continued
-    DB      $0D, $01, $CD, $A7, $AE, $21, $93, $82 ; SUB_AE00 $01 inline Z80: nested entries continued
-    DB      $11, $E5, $01, $01, $17, $01, $CD, $A7 ; SUB_AE00 $01 inline Z80: LD HL,$82C2 / LD DE,$012A ...
-    DB      $AE, $01, $C0, $01, $CD, $D9, $1F, $CD ; SUB_AE00 $01 inline Z80: CALL $AEA7 room-tile write block 1
-    DB      $76, $1F, $3A, $F0, $73, $FE, $82, $20 ; SUB_AE00 $01 inline Z80: CALL $AEA7 room-tile write block 2
-    DB      $04, $3E, $01, $18, $0E, $FE, $88, $20 ; SUB_AE00 $01 inline Z80: CALL $AEA7 room-tile write block 3
-    DB      $04, $3E, $02, $18, $06, $FE, $83, $20 ; SUB_AE00 $01 inline Z80: CALL $AEA7 room-tile write block 4
-    DB      $E6, $3E, $03, $32, $A6, $71, $01, $80 ; SUB_AE00 $01 inline Z80: CALL $81DC / LD A,$02 ...
-    DB      $01, $CD, $D9, $1F, $AF, $21, $00, $04 ; SUB_AE00 $01 inline Z80: LD ($7073)/$7074/$7012/$7068 ...
-    DB      $11, $AC, $03, $CD, $82, $1F, $AF, $21 ; SUB_AE00 $01 inline Z80: CALL $AE3B / CALL $8352 ...
-    DB      $00, $18, $11, $00, $03, $CD, $82, $1F ; SUB_AE00 $01 inline Z80: clear $702C/$7036 / CALL $81DC
-    DB      $CD, $DC, $81, $3E, $02, $32, $73, $70 ; SUB_AE00 $01 inline Z80: CALL $81DC / JP $A59D ...
-    DB      $32, $74, $70, $32, $12, $70, $32, $68 ; SUB_AE00 $01 inline Z80: LD C,$01 / LD A,$08 / CALL $8392
-    DB      $70, $21, $1A, $83, $CD, $3B, $AE, $CD ; SUB_AE00 $01 inline Z80: LD A,$03 / CALL $AE00 level-1 blk
-    DB      $52, $83, $AF, $32, $2C, $70, $32, $36 ; SUB_AE00 $01 inline Z80: level-1 SUB_AE00 entries row 1
-    DB      $70, $01, $E2, $01, $CD, $D9, $1F, $C3 ; SUB_AE00 $01 inline Z80: level-1 entries + terminator
-    DB      $9D, $A5, $0E, $01, $3E, $08, $CD, $92 ; SUB_AE00 $01 inline Z80: CALL $8314 / LD C,$02 ...
-    DB      $83, $3E, $03, $CD, $00, $AE, $10, $85 ; SUB_AE00 $01 inline Z80: LD A,$10 / CALL $8392 level-2
-    DB      $D2, $04, $B1, $88, $D0, $01, $D0, $87 ; SUB_AE00 $01 inline Z80: LD A,$03 / CALL $AE00 level-2 blk
-    DB      $38, $01, $30, $85, $04, $03, $00, $00 ; SUB_AE00 $01 inline Z80: level-2 SUB_AE00 entries row 1
-    DB      $CD, $14, $83, $0E, $02, $3E, $10, $CD ; SUB_AE00 $01 inline Z80: level-2 entries continued
-    DB      $92, $83, $3E, $03, $CD, $00, $AE, $18 ; SUB_AE00 $01 inline Z80: level-2 entries + terminator
-    DB      $85, $D2, $03, $10, $85, $D5, $01, $B9 ; SUB_AE00 $01 inline Z80: CALL $8314 / LD C,$05 ...
-    DB      $88, $D0, $01, $D8, $87, $38, $01, $46 ; SUB_AE00 $01 inline Z80: LD A,$28 / CALL $8392 level-3
-    DB      $85, $04, $03, $70, $86, $A0, $01, $78 ; SUB_AE00 $01 inline Z80: LD A,$03 / CALL $AE00 level-3 blk
-    DB      $86, $A3, $01, $00, $00, $CD, $14, $83 ; SUB_AE00 $01 inline Z80: level-3 SUB_AE00 entries row 1
-    DB      $0E, $05, $3E, $28, $CD, $92, $83, $3E ; SUB_AE00 $01 inline Z80: level-3 entries continued
-    DB      $03, $CD, $00, $AE, $20, $85, $D2, $02 ; SUB_AE00 $01 inline Z80: level-3 entries + terminator
-    DB      $10, $85, $D4, $02, $B1, $88, $D0, $01 ; SUB_AE00 $01 inline Z80: CALL $8314 / LD C,$00 ...
-    DB      $E0, $87, $38, $01, $5E, $85, $04, $03 ; SUB_AE00 $01 inline Z80: LD A,$03 / CALL $AE00 level-4 blk
-    DB      $70, $86, $A0, $01, $78, $86, $A3, $01 ; SUB_AE00 $01 inline Z80: level-4 SUB_AE00 entries row 1
-    DB      $00, $00, $CD, $14, $83, $0E, $00, $AF ; SUB_AE00 $01 inline Z80: level-4 entries continued
-    DB      $CD, $92, $83, $CD, $08, $83, $3E, $03 ; SUB_AE00 $01 inline Z80: level-4 terminator + RET ($C9)
-    DB      $CD, $00, $AE, $28, $85, $D2, $01, $10 ; SUB_AE00 $01 inline Z80: terminator + CALL $8314 tail
-    DB      $85, $D3, $03, $C1, $88, $D0, $01, $E0 ; SUB_AE00 $01 inline Z80: level-4 entries continued
-    DB      $87, $38, $01, $74, $85, $04, $03, $00 ; SUB_AE00 $01 inline Z80: level-4 terminator $00,$00 ...
-    DB      $00, $CD, $14, $83, $C9         ; SUB_AE00 $01 inline Z80: CALL $8314 / RET $C9 (end)
+; =============================================================================
+; TITLE SCREEN ($8116): PARKER BROTHERS PRESENTS / MONTEZUMA'S REVENGE in
+; letters enlarged from the BIOS font, and SELECT LEVEL 1, 2, 3. Wait for
+; keypad 1, 2 or 3, build the game's tile tables and start a new game.
+; =============================================================================
+TITLE_SCREEN:
+    CALL    TURN_OFF_SOUND                  ; sound off
+    CALL    LOAD_ASCII                      ; the BIOS font, again
+    LD      DE, $0041                       ; enlarge the 26 capitals of the font
+    LD      HL, $0080                       ; ($41-$5A) into 2x2 tiles from $80
+    LD      BC, $001A
+    LD      A, $03
+    CALL    ENLARGE
+    CALL    LOAD_TILE_COLOURS               ; the boot tile colours
+    LD      A, $A0                          ; tiles $80-$EF yellow: colour entries 16-29
+    LD      HL, $2010
+    LD      DE, $000E
+    CALL    FILL_VRAM
+    LD      A, $02                          ; table 2: names
+    CALL    LOADER
+    DW      TITLE_PARKER                    ; "PARKER BROTHERS ", row 2 column 8
+    DB      $48, 16
+    DW      TITLE_PRESENTS                  ; "PRESENTS", row 4 column 12
+    DB      $8C, 8
+    DW      TITLE_MONTEZUMAS                ; "MONTEZUMA'S", big letters, top halves: row 6
+    DB      $C6, 21
+    DW      TITLE_MONTEZUMAS_2              ; bottom halves: row 7
+    DB      $E6, 21
+    DB      $00, $00                        ; end
 
-DELAY_LOOP_827F:
-    LD      B, $10                          ; B = 16 (loop 16 pairs)
+; "REVENGE": 13 of the 14 tiles in each half (the last E's right half
+; is left out).
+    LD      HL, TITLE_REVENGE               ; top halves: row 9 column 10
+    LD      DE, $012A
+    LD      BC, $010D
+    CALL    TILE_ROWS
+    LD      HL, TITLE_REVENGE_2             ; bottom halves: row 10
+    LD      DE, $014A
+    LD      BC, $010D
+    CALL    TILE_ROWS
+    LD      HL, TITLE_TEXT                  ; "SELECT LEVEL   1, 2, 3.", row 15 column 5
+    LD      DE, $01E5
+    LD      BC, $0117
+    CALL    TILE_ROWS
+    LD      BC, $01C0                       ; register 1 = $C0: display on, no frame interrupt
+    CALL    WRITE_REGISTER
+
+TITLE_WAIT_KEY:
+    CALL    CONTROLLER_SCAN                 ; read the controllers
+    LD      A, ($73F0)                      ; BIOS keypad 1 code ($80 + key code)
+    CP      $82                             ; key 1
+    JR      NZ, LOC_8187
+    LD      A, $01
+    JR      TITLE_LEVEL
+
+LOC_8187:
+    CP      $88                             ; key 2
+    JR      NZ, LOC_818F
+    LD      A, $02
+    JR      TITLE_LEVEL
+
+LOC_818F:
+    CP      $83                             ; key 3
+    JR      NZ, TITLE_WAIT_KEY
+    LD      A, $03
+
+TITLE_LEVEL:
+    LD      ($71A6), A                      ; the level
+    LD      BC, $0180                       ; display off
+    CALL    WRITE_REGISTER
+    XOR     A                               ; clear the enlarged letters (tiles $80-$F5)...
+    LD      HL, $0400
+    LD      DE, $03AC
+    CALL    FILL_VRAM
+    XOR     A                               ; ...and the screen
+    LD      HL, $1800
+    LD      DE, $0300
+    CALL    FILL_VRAM
+    CALL    BUILD_TILE_TABLES               ; the four tile pattern tables
+    LD      A, $02                          ; the main loop's four task counters: each task
+    LD      ($7073), A                      ; first runs on its second pass
+    LD      ($7074), A
+    LD      ($7012), A
+    LD      ($7068), A
+    LD      HL, FLIP_SPRITES                ; sprite patterns flipped upside down (rolling skulls)
+    CALL    REFLECT_LIST
+    CALL    MIRROR_SPRITES                  ; and mirrored (facing left)
+    XOR     A                               ; no sound effect playing
+    LD      ($702C), A
+    LD      ($7036), A
+    LD      BC, $01E2                       ; register 1 = $E2: display and frame interrupt on, 16x16 sprites
+    CALL    WRITE_REGISTER
+    JP      NEW_GAME                        ; a new game
+
+; =============================================================================
+; BUILD_TILE_TABLES ($81DC): fill the four tile pattern tables the frame
+; interrupt cycles through to animate tiles ($A9F3): each gets the BIOS font
+; and the main tileset ($8392), its own frame of the animated tiles (fire
+; $D2-$D5, conveyors $04-$06, the torch's flame $D0, the creatures' $A0 and
+; $A3, and tile $38), and the mirror images of some tiles ($8314). The table
+; at $0000 also gets the boot tile colours ($8308), and is left current.
+; =============================================================================
+BUILD_TILE_TABLES:
+    LD      C, $01                          ; pattern table 1 ($0800)
+    LD      A, $08
+    CALL    LOAD_TILESET
+    LD      A, $03                          ; table 3: tile patterns
+    CALL    LOADER
+    DW      GFX_FIRE                        ; fire
+    DB      $D2, 4
+    DW      GFX_TORCH                       ; the torch's flame
+    DB      $D0, 1
+    DW      GFX_FLAMES                      ; the fire pit's flames
+    DB      $38, 1
+    DW      GFX_CONVEYOR                    ; conveyor
+    DB      $04, 3
+    DB      $00, $00                        ; end
+    CALL    MIRROR_TILES
+    LD      C, $02                          ; pattern table 2 ($1000)
+    LD      A, $10
+    CALL    LOAD_TILESET
+    LD      A, $03
+    CALL    LOADER
+    DW      $8518                           ; fire, turned one pattern on
+    DB      $D2, 3
+    DW      GFX_FIRE
+    DB      $D5, 1
+    DW      GFX_TORCH_2                     ; the torch's flame
+    DB      $D0, 1
+    DW      GFX_FLAMES_2                    ; the fire pit's flames
+    DB      $38, 1
+    DW      GFX_CONVEYOR_2                  ; conveyor
+    DB      $04, 3
+    DW      GFX_CREATURE_2                  ; the creature's other frame
+    DB      $A0, 1
+    DW      $8678
+    DB      $A3, 1
+    DB      $00, $00                        ; end
+    CALL    MIRROR_TILES
+    LD      C, $05                          ; pattern table 5 ($2800)
+    LD      A, $28
+    CALL    LOAD_TILESET
+    LD      A, $03
+    CALL    LOADER
+    DW      $8520                           ; fire, turned two patterns on
+    DB      $D2, 2
+    DW      GFX_FIRE
+    DB      $D4, 2
+    DW      GFX_TORCH                       ; the torch's flame
+    DB      $D0, 1
+    DW      GFX_FLAMES_3                    ; the fire pit's flames
+    DB      $38, 1
+    DW      GFX_CONVEYOR_3                  ; conveyor
+    DB      $04, 3
+    DW      GFX_CREATURE_2                  ; the creature's other frame
+    DB      $A0, 1
+    DW      $8678
+    DB      $A3, 1
+    DB      $00, $00                        ; end
+    CALL    MIRROR_TILES
+    LD      C, $00                          ; pattern table 0 ($0000), with the boot colours
+    XOR     A
+    CALL    LOAD_TILESET
+    CALL    LOAD_TILE_COLOURS
+    LD      A, $03
+    CALL    LOADER
+    DW      $8528                           ; fire, turned three patterns on
+    DB      $D2, 1
+    DW      GFX_FIRE
+    DB      $D3, 3
+    DW      GFX_TORCH_3                     ; the torch's flame
+    DB      $D0, 1
+    DW      GFX_FLAMES_3                    ; the fire pit's flames
+    DB      $38, 1
+    DW      GFX_CONVEYOR_4                  ; conveyor
+    DB      $04, 3
+    DB      $00, $00                        ; end
+    CALL    MIRROR_TILES
+    RET
+
+; DITHER_COPY ($827F): copy 16 byte pairs from HL to DE, keeping the odd
+; pixels of the first byte of each pair and the even pixels of the second:
+; a checkered copy of a 16x16 sprite.
+DITHER_COPY:
+    LD      B, $10
 
 LOC_8281:
-    PUSH    BC                              ; save loop counter B
-    LD      BC, $AA55                       ; BC = $AA55 (bitmask pair for sprite demultiplexing)
-    LD      A, (HL)                         ; A = byte from ROM source
-    AND     B                               ; AND B ($AA): keep odd-column bits
-    LD      (DE), A                         ; store masked byte to RAM (first of pair)
-    INC     DE                              ; INC DE: advance dest past first masked byte
-    INC     HL                              ; advance ROM source pointer
-    LD      A, (HL)                         ; A = next ROM byte
-    AND     C                               ; AND C ($55): keep even-column bits
-    LD      (DE), A                         ; store second masked byte to RAM
-    INC     DE                              ; INC DE: advance dest past second masked byte
-    INC     HL                              ; advance ROM source
-    POP     BC                              ; restore loop counter B
-    DJNZ    LOC_8281                        ; DJNZ LOC_8281: loop 16 times
-    RET                                     ; RET
-    DB      $53, $45, $4C, $45, $43, $54, $20, $4C ; "SELECT L"
-    DB      $45, $56, $45, $4C, $20, $20, $20, $31 ; "EVEL   1"
-    DB      $2C, $20, $32, $2C, $20, $33, $2E, $50 ; ", 2, 3.P"
-    DB      $41, $52, $4B, $45, $52, $20, $42, $52 ; "ARKER BR"
-    DB      $4F, $54, $48, $45, $52, $53, $20, $50 ; "OTHERS P"
-    DB      $52, $45, $53, $45, $4E, $54, $53, $C4 ; inline text (post-RET): "PRESENTS" partial + tile IDs
-    DB      $C6, $90, $92, $D4, $D6, $90, $92, $B4 ; inline tile IDs: title screen sprite tile indices row 1
-    DB      $B6, $98, $9A, $90, $92, $C5, $C7, $91 ; inline tile IDs: title screen sprite tile indices row 2
-    DB      $93, $D5, $D7, $91, $93, $B5, $B7, $99 ; inline tile IDs: title screen sprite tile indices row 3
-    DB      $9B, $91, $93, $B0, $B2, $B8, $BA, $B4 ; inline tile IDs: title screen sprite tile indices row 4
-    DB      $B6, $CC, $CE, $90, $92, $E4, $E6, $D0 ; inline tile IDs: title screen sprite tile indices row 5
-    DB      $D2, $B0, $B2, $80, $82, $27, $C8, $CA ; inline tile IDs: title screen sprite tile indices row 6
-    DB      $B1, $B3, $B9, $BB, $B5, $B7, $CD, $CF ; inline tile IDs: title screen sprite tile indices row 7
-    DB      $91, $93, $E5, $E7, $D1, $D3, $B1, $B3 ; inline tile IDs: title screen sprite tile indices row 8
-    DB      $81, $83, $00, $C9, $CB         ; inline tile IDs: terminator $00 + RET $C9 + extra byte
+    PUSH    BC
+    LD      BC, $AA55
+    LD      A, (HL)
+    AND     B
+    LD      (DE), A
+    INC     DE
+    INC     HL
+    LD      A, (HL)
+    AND     C
+    LD      (DE), A
+    INC     DE
+    INC     HL
+    POP     BC
+    DJNZ    LOC_8281
+    RET
 
-SUB_8308:
-    LD      A, $04                          ; A = $04 (block selector for room tile data)
-    CALL    SUB_AE00                        ; CALL SUB_AE00 ($04): POP HL trick -- write current room tiles to VRAM
-    LD      E, $84                          ; inline data: SUB_AE00 $04 VRAM block byte 0
-    NOP                                     ; inline data: SUB_AE00 $04 VRAM block byte 1
-    INC     E                               ; inline data: SUB_AE00 $04 VRAM block byte 2
-    NOP                                     ; inline data: SUB_AE00 $04 VRAM block byte 3
-    NOP                                     ; inline data: SUB_AE00 $04 VRAM block byte 4
-    RET                                     ; inline data: SUB_AE00 $04 VRAM block end (RET opcode)
-    DB      $21, $7D, $83, $C3, $3B, $AE, $00, $01 ; SUB_AE00 $04 inline Z80: LD HL,$837D / JP $AE3B ...
-    DB      $10, $19, $11, $18, $12, $1B, $13, $1A ; room tile index table: tile pairs rows 0-1
-    DB      $0C, $1D, $0D, $1C, $0E, $1F, $0F, $1E ; room tile index table: tile pairs rows 2-3
-    DB      $FF, $D4, $DE, $D8, $E2, $18, $22, $14 ; room tile index table: tile pairs rows 4-5 + sentinel $FF
-    DB      $26, $10, $2A, $2C, $32, $34, $42, $4C ; room tile index table: LD HL,$832D / LD A,(HL) ...
-    DB      $52, $54, $5A, $5C, $62, $98, $A6, $6C ; room tile index inline Z80: LD D,$00 / LD BC,$0002 ...
-    DB      $7E, $9C, $AA, $A0, $AE, $A0, $AE, $B0 ; room tile index inline Z80: LD A,E / PUSH DE+HL+BC+AF ...
-    DB      $B6, $B8, $BE, $C0, $C6, $FF, $21, $2D ; room tile index inline Z80: CALL $1F6A / POP AF+BC+HL+DE
-    DB      $83, $7E, $FE, $FF, $C8, $16, $00, $01 ; room tile index inline Z80: INC DE (x2) / DEC HL (x2) ...
-    DB      $02, $00, $5F, $23, $E5, $7E, $6F, $26 ; room tile index inline Z80: CALL $1F6A / POP HL / JR $18
-    DB      $00, $3E, $01, $D5, $E5, $C5, $F5, $CD ; SUB_AE00 $03 block: [BC=$0103,A0,A4,A1,A5,A2,A6,A3,A7]
-    DB      $6A, $1F, $F1, $C1, $E1, $D1, $13, $13 ; SUB_AE00 $03 block: [B8,$62,$63,D0,D1] + sentinel $FF ...
-    DB      $2B, $2B, $CD, $6A, $1F, $E1, $23, $18 ; inline Z80: PUSH AF / LD B,$04 / CALL $1FD9 ...
-    DB      $D8, $01, $03, $A0, $A4, $A1, $A5, $A2 ; inline Z80: CALL $1F7F / LD A,$03 / CALL $AE00
-    DB      $A6, $A3, $A7, $04, $BA, $05, $B9, $06 ; SUB_AE00 $03 entries: [$40,$84,$08,$05] [$FA,$85,$90,$08]
-    DB      $B8, $62, $63, $D0, $D1, $FF, $F5, $06 ; SUB_AE00 $03 entries: [$3A,$86,$60,$03] [$08,$85,$6F,$01]
-    DB      $04, $CD, $D9, $1F, $F1, $32, $F9, $73 ; SUB_AE00 $03 entries: [$9C,$85,$6C,$02] [$2A,$86,$74,$02]
-    DB      $CD, $7F, $1F, $3E, $03, $CD, $00, $AE ; SUB_AE00 $03 entries: [$8C,$85,$98,$04] [$02,$86,$68,$04]
-    DB      $40, $84, $08, $05, $FA, $85, $90, $08 ; SUB_AE00 $03 entries: [$02,$86,$70,$04] [$02,$86,$78,$04]
-    DB      $3A, $86, $60, $03, $08, $85, $6F, $01 ; SUB_AE00 $03 entries: [$50,$86,$A0,$04] [$3A,$86,$A8,$03]
-    DB      $9C, $85, $6C, $02, $2A, $86, $74, $02 ; SUB_AE00 $03 entries: [$80,$86,$C0,$06] [$80,$86,$C7,$01]
-    DB      $8C, $85, $98, $04, $02, $86, $68, $04 ; SUB_AE00 $03 entries: [$80,$86,$95,$01] [$80,$86,$B0,$05]
-    DB      $02, $86, $70, $04, $02, $86, $78, $04 ; SUB_AE00 $03 entries: [$80,$86,$B7,$01] [$80,$86,$BB,$05]
-    DB      $50, $86, $A0, $04, $3A, $86, $A8, $03 ; SUB_AE00 $03 entries: [$80,$86,$9C,$01] [$AC,$85,$10,$02]
-    DB      $80, $86, $C0, $06, $80, $86, $C7, $01 ; SUB_AE00 $03 entries: [$AC,$85,$88,$02] [$68,$84,$18,$0A]
-    DB      $80, $86, $95, $01, $80, $86, $B0, $05 ; SUB_AE00 $03 entries: [$B8,$84,$28,$0A] [$BC,$85,$E0,$01]
-    DB      $80, $86, $B7, $01, $80, $86, $BB, $05 ; SUB_AE00 $03 entries: [$CA,$85,$E8,$01] terminator+RET $C9
-    DB      $80, $86, $9C, $01, $AC, $85, $10, $02 ; SUB_AE00 $03 entries: terminator $00,$00 / RET $C9
-    DB      $AC, $85, $88, $02, $68, $84, $18, $0A ; SUB_AE00 $03: inline Z80 continued after terminator
-    DB      $B8, $84, $28, $0A, $BC, $85, $E0, $01 ; SUB_AE00 $03: inline Z80 continued
-    DB      $CA, $85, $E8, $01, $00, $00, $C9 ; SUB_AE00 $03: inline Z80 tail bytes
+; Title screen text: ASCII, and tile numbers of the big letters (letter n of
+; the alphabet is the 2x2 block from $80 + 4n: top left, bottom left, top
+; right, bottom right).
+TITLE_TEXT:
+    DB      "SELECT LEVEL   1, 2, 3."       ; row 15
 
-SUB_840B:
-    LD      (HL), $00                       ; (HL) = $00 (seed first byte)
-    PUSH    HL                              ; PUSH HL (save base pointer)
-    POP     DE                              ; POP DE (DE = HL -- copy source addr)
-    INC     DE                              ; INC DE (DE = HL+1, destination one byte ahead)
-    LDIR                                    ; LDIR: fill BC bytes with $00 by propagating the seed
-    RET                                     ; RET: return from SUB_840B
+TITLE_PARKER:
+    DB      "PARKER BROTHERS "              ; row 2
 
-SUB_8413:
-    LD      HL, BOOT_UP                     ; HL = $0000 (BOOT_UP = VRAM start address)
-    LD      DE, $4000                       ; DE = $4000 (length: entire 16 KB VRAM)
-    XOR     A                               ; A = $00 (fill value: blank)
-    CALL    FILL_VRAM                       ; CALL FILL_VRAM: clear all VRAM
-    RET                                     ; RET: return from SUB_8413
-    DB      $90, $A7, $4A, $8B, $B1, $F0, $F0, $F0 ; sprite bitmap data: player/enemy tiles, row 0-7 (start)
-    DB      $F0, $F0, $F0, $F0, $20, $90, $E0, $40 ; sprite bitmap data: continued row 8-15
-    DB      $40, $40, $E0, $90, $20, $20, $40, $90 ; sprite bitmap data: continued row 16-23
-    DB      $E0, $4A, $90, $60, $40, $40, $00, $00 ; sprite bitmap data: continued row 24-31
-    DB      $00, $00, $FB, $FB, $FB, $00, $7F, $7F ; sprite bitmap data: continued row 32-39
-    DB      $7F, $00, $FB, $FB, $FB, $00, $00, $00 ; sprite bitmap data: continued row 40-47
-    DB      $00, $00, $F0, $F0, $F0, $00, $F0, $F0 ; sprite bitmap data: continued row 48-55
-    DB      $F0, $00, $0B, $0B, $0B, $00, $0F, $0F ; sprite bitmap data: continued row 56-63
-    DB      $0F, $00, $00, $00, $00, $00, $7F, $7F ; sprite bitmap data: continued row 64-71
-    DB      $7F, $00, $38, $7C, $FE, $FE, $EE, $C6 ; sprite bitmap data: continued row 72-79
-    DB      $C6, $C6, $38, $78, $F8, $F8, $F8, $F8 ; sprite bitmap data: continued row 80-87
-    DB      $38, $38, $38, $7C, $FE, $FE, $EE, $C6 ; sprite bitmap data: continued row 88-95
-    DB      $C6, $0E, $38, $7C, $FE, $FE, $FE, $C6 ; sprite bitmap data: continued row 96-103
-    DB      $06, $1C, $1C, $3C, $3C, $7C, $7C, $EC ; sprite bitmap data: continued row 104-111
-    DB      $EC, $CC, $FE, $FE, $FE, $FE, $C6, $E0 ; sprite bitmap data: continued row 112-119
-    DB      $F8, $3E, $38, $7C, $FE, $FE, $EE, $C0 ; sprite bitmap data: continued row 120-127
-    DB      $F8, $FC, $FE, $FE, $FE, $FE, $FE, $0E ; sprite bitmap data: continued row 128-135
-    DB      $0E, $1E, $38, $7C, $FE, $FE, $EE, $C6 ; sprite bitmap data: continued row 136-143
-    DB      $EE, $7C, $38, $7C, $FE, $FE, $EE, $C6 ; sprite bitmap data: continued row 144-151
-    DB      $EE, $7E, $EE, $FE, $FE, $FE, $FE, $FE ; sprite bitmap data: continued row 152-159
-    DB      $7C, $38, $38, $38, $38, $38, $FE, $FE ; sprite bitmap data: continued row 160-167
-    DB      $FE, $FE, $1E, $3C, $78, $70, $FE, $FE ; sprite bitmap data: continued row 168-175
-    DB      $FE, $FE, $1C, $06, $C6, $EE, $FE, $FE ; sprite bitmap data: continued row 176-183
-    DB      $7C, $38, $CC, $FE, $FE, $FE, $FE, $FE ; sprite bitmap data: continued row 184-191
-    DB      $18, $18, $0E, $C6, $C6, $EE, $FE, $FE ; sprite bitmap data: continued row 192-199
-    DB      $7C, $38, $EE, $C6, $EE, $FE, $FE, $FE ; sprite bitmap data: continued row 200-207
-    DB      $7C, $38, $1E, $1C, $3C, $38, $78, $78 ; sprite bitmap data: continued row 208-215
-    DB      $70, $70, $EE, $C6, $EE, $FE, $FE, $FE ; sprite bitmap data: continued row 216-223
-    DB      $7C, $38, $3E, $06, $C6, $EE, $FE, $FE ; sprite bitmap data: continued row 224-231
-    DB      $7C, $38, $00, $00, $3C, $3C, $7E, $7E ; sprite bitmap data: continued row 232-239
-    DB      $00, $00, $08, $06, $07, $07, $0F, $1F ; sprite bitmap data: continued row 240-247
-    DB      $7F, $FF, $00, $00, $24, $33, $71, $FD ; sprite bitmap data: continued row 248-255
-    DB      $FF, $FF, $00, $00, $01, $81, $F1, $F9 ; sprite bitmap data: continued row 256-263
-    DB      $FB, $FF, $00, $80, $00, $81, $C2, $E6 ; sprite bitmap data: continued row 264-271
-    DB      $EF, $FF, $C0, $C0, $3F, $3F, $3F, $3F ; sprite bitmap data: continued row 272-279
-    DB      $03, $03, $C0, $C0, $FF, $FF, $FF, $FF ; sprite bitmap data: continued row 280-287
-    DB      $03, $03, $C0, $C0, $FC, $FC, $FC, $FC ; sprite bitmap data: continued row 288-295
-    DB      $03, $03, $3F, $FF, $FF, $3F, $00, $00 ; sprite bitmap data: continued row 296-303
-    DB      $03, $03, $FF, $FF, $FF, $FF, $C0, $C0 ; sprite bitmap data: continued row 304-311
-    DB      $00, $00, $FC, $FF, $FF, $FC, $C0, $C0 ; sprite bitmap data: continued row 312-319
-    DB      $0C, $0C, $3F, $3F, $3F, $3F, $C0, $C0 ; sprite bitmap data: continued row 320-327
-    DB      $0C, $0C, $FF, $FF, $FF, $FF, $30, $30 ; sprite bitmap data: continued row 328-335
-    DB      $03, $03, $FC, $FC, $FC, $FC, $30, $30 ; sprite bitmap data: continued row 336-343
-    DB      $3F, $3F, $3F, $3F, $0C, $0C, $30, $30 ; sprite bitmap data: continued row 344-351
-    DB      $FF, $FF, $FF, $FF, $0C, $0C, $30, $30 ; sprite bitmap data: continued row 352-359
-    DB      $FC, $FC, $FC, $FC, $0C, $0C, $00, $7E ; sprite bitmap data: continued row 360-367
-    DB      $81, $BD, $BD, $BD, $BD, $BD, $BD, $BD ; sprite bitmap data: continued row 368-375
-    DB      $BD, $81, $7E, $00, $00, $00, $03, $03 ; sprite bitmap data: continued row 376-383
-    DB      $0F, $0F, $03, $03, $03, $00, $80, $80 ; sprite bitmap data: continued row 384-391
-    DB      $E0, $E0, $80, $80, $80, $00, $30, $30 ; sprite bitmap data: continued row 392-399
-    DB      $30, $30, $3F, $30, $30, $30, $0C, $0C ; sprite bitmap data: continued row 400-407
-    DB      $0C, $0C, $FC, $0C, $0C, $0C, $7C, $6C ; sprite bitmap data: continued row 408-415
-    DB      $6C, $6C, $6C, $7C, $10, $10, $7C, $6C ; sprite bitmap data: continued row 416-423
-    DB      $6C, $6C, $6C, $7C, $FF, $66, $C3, $66 ; sprite bitmap data: continued row 424-431
-    DB      $FF, $00, $00, $00, $FF, $66, $18, $66 ; sprite bitmap data: continued row 432-439
-    DB      $FF, $00, $00, $00, $00, $00, $00, $00 ; sprite bitmap data: continued row 440-447
-    DB      $00, $00, $00, $08, $14, $23, $09, $17 ; sprite bitmap data: continued row 448-455
-    DB      $23, $0B, $17, $21, $00, $00, $00, $00 ; sprite bitmap data: continued row 456-463
-    DB      $00, $10, $28, $44, $90, $A8, $C4, $D0 ; sprite bitmap data: continued row 464-471
-    DB      $E8, $C4, $C0, $80, $18, $18, $18, $18 ; sprite bitmap data: continued row 472-479
-    DB      $0C, $0C, $0C, $0C, $07, $0F, $1C, $1C ; sprite bitmap data: continued row 480-487
-    DB      $0F, $03, $03, $01, $E0, $F0, $38, $38 ; sprite bitmap data: continued row 488-495
-    DB      $F0, $C0, $C0, $80, $01, $01, $03, $01 ; sprite bitmap data: continued row 496-503
-    DB      $03, $01, $00, $00, $80, $80, $80, $80 ; sprite bitmap data: continued row 504-511
-    DB      $80, $80, $00, $00, $3C, $1C, $00, $00 ; sprite bitmap data: continued row 512-519
-    DB      $00, $38, $3C, $3C, $02, $03, $03, $03 ; sprite bitmap data: continued row 520-527
-    DB      $03, $03, $03, $03, $00, $00, $80, $80 ; sprite bitmap data: continued row 528-535
-    DB      $80, $80, $80, $80, $00, $2D, $3F, $3F ; sprite bitmap data: continued row 536-543
-    DB      $2D, $0C, $0C, $0C, $0C, $0C, $0C, $0C ; sprite bitmap data: continued row 544-551
-    DB      $0C, $00, $00, $00, $1F, $0F, $03, $03 ; sprite bitmap data: continued row 552-559
-    DB      $03, $01, $00, $00, $00, $03, $0C, $0F ; sprite bitmap data: continued row 560-567
-    DB      $00, $00, $00, $00, $00, $C0, $E0, $F0 ; sprite bitmap data: continued row 568-575
-    DB      $30, $F0, $07, $1E, $18, $18, $18, $0C ; sprite bitmap data: continued row 576-583
-    DB      $06, $03, $C0, $00, $00, $00, $01, $03 ; sprite bitmap data: continued row 584-591
-    DB      $0E, $FC, $00, $00, $00, $03, $0C, $3F ; sprite bitmap data: continued row 592-599
-    DB      $00, $00, $C0, $00, $00, $00, $04, $0C ; sprite bitmap data: continued row 600-607
-    DB      $0C, $FC, $7E, $7E, $7E, $7E, $7E, $7E ; sprite bitmap data: continued row 608-615
-    DB      $7E, $7E, $00, $07, $0F, $09, $29, $6F ; sprite bitmap data: continued row 616-623
-    DB      $E9, $E9, $00, $E0, $E0, $28, $2C, $EE ; sprite bitmap data: continued row 624-631
-    DB      $2F, $2F, $EF, $EF, $EF, $EF, $EF, $EF ; sprite bitmap data: continued row 632-639
-    DB      $EF, $EF, $FF, $FF, $7E, $7E, $3C, $3C ; sprite bitmap data: continued row 640-647
-    DB      $3C, $3C, $07, $07, $1F, $3F, $38, $08 ; sprite bitmap data: continued row 648-655
-    DB      $00, $1F, $3F, $0F, $07, $03, $33, $3F ; sprite bitmap data: continued row 656-663
-    DB      $3C, $38, $C0, $C0, $F8, $F8, $80, $00 ; sprite bitmap data: continued row 664-671
-    DB      $00, $E0, $C0, $C0, $C0, $C0, $E0, $E0 ; sprite bitmap data: continued row 672-679
-    DB      $E0, $E0, $00, $07, $07, $07, $00, $00 ; sprite bitmap data: continued row 680-687
-    DB      $30, $38, $3C, $1C, $00, $00, $00, $38 ; sprite bitmap data: continued row 688-695
-    DB      $3C, $1C, $00, $60, $E0, $C0, $00, $B0 ; sprite bitmap data: continued row 696-703
-    DB      $30, $BC, $3C, $80, $00, $00, $00, $E0 ; sprite bitmap data: continued row 704-711
-    DB      $F0, $F0, $3F, $0F, $07, $03, $33, $3F ; sprite bitmap data: continued row 712-719
-    DB      $07, $07, $C0, $C0, $C0, $C0, $E0, $E0 ; sprite bitmap data: continued row 720-727
-    DB      $00, $00, $3C, $80, $00, $00, $18, $F8 ; sprite bitmap data: continued row 728-735
-    DB      $E0, $00, $3C, $1C, $00, $00, $00, $07 ; sprite bitmap data: continued row 736-743
-    DB      $07, $07, $3C, $80, $00, $00, $00, $00 ; sprite bitmap data: continued row 744-751
-    DB      $80, $80, $07, $0F, $0F, $3F, $3F, $1F ; sprite bitmap data: continued row 752-759
-    DB      $0F, $0F, $C0, $C0, $C0, $E0, $E0, $F0 ; sprite bitmap data: continued row 760-767
-    DB      $70, $70, $00, $07, $07, $27, $70, $78 ; sprite bitmap data: continued row 768-775
-    DB      $70, $30, $00, $00, $00, $00, $00, $0F ; sprite bitmap data: continued row 776-783
-    DB      $0F, $0F, $00, $60, $E0, $C0, $0C, $3C ; sprite bitmap data: continued row 784-791
-    DB      $3C, $B8, $00, $86, $0E, $0E, $0C, $00 ; sprite bitmap data: continued row 792-799
-    DB      $80, $80, $03, $03, $1F, $1F, $0F, $03 ; sprite bitmap data: continued row 800-807
-    DB      $02, $01, $39, $3F, $3F, $0F, $0F, $0F ; sprite bitmap data: continued row 808-815
-    DB      $0F, $0F, $C0, $C0, $F8, $F8, $F0, $C0 ; sprite bitmap data: continued row 816-823
-    DB      $40, $80, $98, $FC, $FC, $F0, $F0, $F0 ; sprite bitmap data: continued row 824-831
-    DB      $F0, $F0, $00, $00, $30, $39, $36, $06 ; sprite bitmap data: continued row 832-839
-    DB      $01, $00, $00, $00, $00, $00, $00, $0E ; sprite bitmap data: continued row 840-847
-    DB      $00, $00, $00, $00, $00, $80, $60, $60 ; sprite bitmap data: continued row 848-855
-    DB      $80, $00, $0C, $0C, $00, $00, $00, $60 ; sprite bitmap data: continued row 856-863
-    DB      $70, $70, $1A, $1F, $1F, $0F, $0F, $07 ; sprite bitmap data: continued row 864-871
-    DB      $01, $00, $40, $FC, $FC, $FC, $FC, $FC ; sprite bitmap data: continued row 872-879
-    DB      $F0, $F0, $00, $00, $00, $01, $1A, $01 ; sprite bitmap data: continued row 880-887
-    DB      $00, $00, $00, $00, $00, $06, $03, $03 ; sprite bitmap data: continued row 888-895
-    DB      $00, $00, $00, $00, $00, $80, $40, $98 ; sprite bitmap data: continued row 896-903
-    DB      $00, $00, $00, $00, $00, $00, $00, $60 ; sprite bitmap data: continued row 904-911
-    DB      $E0, $80, $00, $00, $00, $01, $06, $06 ; sprite bitmap data: continued row 912-919
-    DB      $01, $00, $00, $00, $00, $00, $34, $3E ; sprite bitmap data: continued row 920-927
-    DB      $1E, $0C, $00, $00, $00, $80, $60, $60 ; sprite bitmap data: continued row 928-935
-    DB      $80, $00, $00, $00, $00, $00, $2C, $7C ; sprite bitmap data: continued row 936-943
-    DB      $78, $30, $00, $10, $08, $20, $14, $22 ; sprite bitmap data: continued row 944-951
-    DB      $08, $42, $00, $00, $24, $10, $28, $08 ; sprite bitmap data: continued row 952-959
-    DB      $10, $2C, $00, $10, $2C, $30, $3C, $2A ; sprite bitmap data: continued row 960-967
-    DB      $18, $6E, $00, $0C, $3C, $78, $70, $60 ; sprite bitmap data: continued row 968-975
-    DB      $60, $7E, $00, $00, $00, $03, $04, $0B ; sprite bitmap data: continued row 976-983
-    DB      $10, $1F, $00, $00, $00, $78, $78, $60 ; sprite bitmap data: continued row 984-991
-    DB      $60, $60, $60, $00, $00, $00, $80, $40 ; sprite bitmap data: continued row 992-999
-    DB      $20, $F8, $78, $78, $78, $18, $18, $18 ; sprite bitmap data: continued row 1000-1007
-    DB      $1E, $06, $00, $00, $00, $00, $1C, $1C ; sprite bitmap data: continued row 1008-1015
-    DB      $7C, $60, $00, $0F, $1F, $3F, $7E, $7E ; sprite bitmap data: continued row 1016-1023
-    DB      $7F, $73, $37, $1F, $0F, $03, $00, $00 ; sprite bitmap data: continued row 1024-1031
-    DB      $00, $00, $00, $00, $80, $C0, $60, $E0 ; sprite bitmap data: continued row 1032-1039
-    DB      $F0, $F0, $CC, $CC, $3C, $3C, $F8, $F0 ; sprite bitmap data: continued row 1040-1047
-    DB      $00, $00, $00, $00, $1E, $3B, $73, $F3 ; sprite bitmap data: continued row 1048-1055
-    DB      $FF, $FF, $F3, $73, $3B, $1E, $00, $00 ; sprite bitmap data: continued row 1056-1063
-    DB      $00, $00, $00, $00, $00, $00, $B8, $18 ; sprite bitmap data: continued row 1064-1071
-    DB      $B8, $B8, $18, $B8, $00, $00, $00, $00 ; sprite bitmap data: continued row 1072-1079
-    DB      $00, $0E, $1F, $1F, $3C, $3B, $34, $2F ; sprite bitmap data: continued row 1080-1087
-    DB      $00, $3C, $3F, $07, $00, $00, $00, $00 ; sprite bitmap data: continued row 1088-1095
-    DB      $00, $00, $C0, $F8, $F8, $78, $A0, $D8 ; sprite bitmap data: continued row 1096-1103
-    DB      $00, $F8, $F8, $E0, $07, $1F, $7F, $FF ; sprite bitmap data: continued row 1104-1111
-    DB      $FF, $7F, $3F, $FF, $FF, $7F, $3E, $3C ; sprite bitmap data: continued row 1112-1119
-    DB      $18, $00, $00, $00, $E0, $F8, $FC, $FF ; sprite bitmap data: continued row 1120-1127
-    DB      $FF, $FE, $FF, $FF, $FE, $64, $30, $30 ; sprite bitmap data: continued row 1128-1135
-    DB      $60, $C0, $C0, $60, $00, $03, $07, $0F ; sprite bitmap data: continued row 1136-1143
-    DB      $1F, $19, $11, $1F, $0F, $0F, $05, $00 ; sprite bitmap data: continued row 1144-1151
-    DB      $05, $07, $07, $00, $00, $C0, $E0, $F0 ; sprite bitmap data: continued row 1152-1159
-    DB      $F8, $98, $88, $F8, $F0, $F0, $A0, $00 ; sprite bitmap data: last rows + game logic Z80 start
-    DB      $A0, $E0, $E0, $00, $01, $01, $03, $07 ; inline Z80: game main loop start / CALL $92DC ...
-    DB      $0F, $0F, $1F, $00, $00, $00, $03, $07 ; inline Z80: LD A,$03 / LD ($70AB) / CALL $A7A1 ...
-    DB      $07, $0F, $1F, $00, $04, $03, $07, $07 ; inline Z80: CALL $8C1F / LD A,($705F) ...
-    DB      $0F, $1F, $1F, $18, $0C, $04, $06, $1B ; inline Z80: BIT 0,($705F) / JR Z / LD A,($7301) ...
-    DB      $0C, $08, $0B, $CD, $DC, $92, $3A, $AB ; inline Z80: CALL $918C / LD HL,$8913 ...
-    DB      $70, $3D, $F2, $DD, $88, $3E, $03, $32 ; inline Z80: LD A,($7079) / RLCA / CALL $405A ...
-    DB      $AB, $70, $CD, $A1, $A7, $CD, $1F, $8C ; inline Z80: LD HL,$8921 / LD A,($7079) / RLCA ...
-    DB      $3A, $5F, $70, $CB, $57, $28, $0E, $3A ; inline Z80: CALL $A540 / LD E,(HL) / LD D,H / CALL $AE3A
-    DB      $01, $73, $FE, $80, $3E, $86, $38, $02 ; inline Z80: JP $8DE8 -- tail to main game loop
-    DB      $3E, $8C, $32, $EE, $73, $CD, $56, $91 ; game object handler table: entries $88 (lo/hi pairs)
-    DB      $21, $13, $89, $3A, $79, $70, $CB, $27 ; game object handler table: entries continued
-    DB      $CD, $40, $A5, $5E, $23, $56, $EB, $CD ; inline Z80: LD A,($705B) / CP $08 / JR NZ ...
-    DB      $3A, $AE, $C3, $E8, $8D, $29, $89, $29 ; inline Z80: LD A,($7058) / CP $08 / JR NZ ...
-    DB      $89, $2F, $8A, $59, $8C, $02, $8D, $83 ; inline Z80: LD BC,$F800 / LD A,($7057) ...
-    DB      $8A, $83, $8A, $C5, $8C, $7F, $8B, $8E ; inline Z80: JR NZ / LD B,$08 / JP $8DD4 ...
-    DB      $8B, $6E, $8B, $3A, $5B, $70, $FE, $08 ; inline Z80: LD A,($7057) / CALL $913B ...
-    DB      $20, $16, $3A, $58, $70, $FE, $08, $20 ; inline Z80: JP $8A91 / LD A,($7373) / AND $0F ...
-    DB      $0F, $01, $00, $F8, $3A, $57, $70, $FE ; inline Z80: CALL $8C44 / XOR A / LD ($7077) ...
-    DB      $00, $28, $02, $06, $08, $C3, $D4, $8D ; inline Z80: AND $01 / JR Z / LD HL,($7058) ...
-    DB      $3A, $57, $70, $CD, $3B, $91, $20, $03 ; inline Z80: JR NZ / LD A,(HL) / CP $88 ...
-    DB      $C3, $91, $8A, $3A, $EE, $73, $E6, $0F ; inline Z80: JR NZ / CALL $8B20 / LD C,$FC / JR ...
-    DB      $CD, $44, $8C, $AF, $32, $77, $70, $01 ; inline Z80: CALL $8B20 / LD C,$02 / LD A,$08 ...
-    DB      $00, $00, $3A, $EE, $73, $E6, $01, $28 ; inline Z80: LD A,$03 / PUSH AF / LD A,B ...
-    DB      $43, $21, $58, $70, $7E, $23, $FE, $88 ; inline Z80: LD ($7078) / POP AF / LD ($7079) ...
-    DB      $20, $3A, $7E, $FE, $89, $20, $35, $CD ; inline Z80: LD A,($7079) / CP $02 / JR NZ ...
-    DB      $20, $8B, $0E, $FC, $18, $0A, $CD, $20 ; inline Z80: LD A,($70AB) / AND $01 / CP $01 ...
-    DB      $8B, $0E, $02, $3E, $08, $32, $B2, $70 ; inline Z80: CALL $8F37 / LD HL,($7076) / LD (HL),B ...
-    DB      $3E, $03, $F5, $78, $FE, $00, $28, $03 ; inline Z80: RET / LD A,($7373) / AND $04 ...
-    DB      $32, $78, $70, $F1, $32, $79, $70, $FE ; inline Z80: JR NZ / LD HL,($705B) ...
-    DB      $02, $28, $0A, $3A, $AB, $70, $E6, $01 ; inline Z80: CP $11 / JR Z / CP $C4 / JR NZ ...
-    DB      $FE, $01, $C4, $37, $8F, $21, $76, $70 ; inline Z80: CALL $8B27 / CALL $8C53 ...
-    DB      $70, $23, $71, $C9, $3A, $EE, $73, $E6 ; inline Z80: CALL $8C53 / LD A,$04 / JR ...
-    DB      $04, $28, $1C, $21, $5B, $70, $7E, $23 ; inline Z80: AND $08 / JR Z / LD BC,$00FE ...
-    DB      $FE, $10, $20, $05, $7E, $FE, $11, $28 ; inline Z80: CALL $90E3 / JR NC / LD A,$07 ...
-    DB      $BD, $FE, $C4, $20, $0A, $CD, $27, $8B ; inline Z80: CALL $AC1A / LD A,($7300) ...
-    DB      $CD, $53, $8C, $3E, $04, $18, $26, $3A ; inline Z80: LD A,$12 / LD ($7072) / LD HL,$93AE ...
-    DB      $EE, $73, $E6, $08, $28, $37, $01, $00 ; inline Z80: LD C,$FF / LD A,$02 / JP $8988 ...
-    DB      $FE, $CD, $E3, $90, $30, $1A, $3E, $07 ; inline Z80: PUSH BC / CALL $911E / POP BC / JR C ...
-    DB      $CD, $1A, $AC, $3A, $00, $73, $32, $7C ; inline Z80: JR $8A91 / LD A,($7300) ...
-    DB      $70, $3E, $12, $32, $72, $70, $21, $AE ; inline Z80: LD A,$06 / JR ...
-    DB      $93, $0E, $FF, $3E, $02, $C3, $88, $89 ; inline Z80: AND $02 / JR Z / LD BC,$0200 ...
-    DB      $C5, $CD, $1E, $91, $C1, $38, $04, $3E ; inline Z80: CALL $90E3 / JR NC / PUSH BC ...
-    DB      $01, $18, $F2, $3A, $00, $73, $32, $7C ; inline Z80: CALL $911E / POP BC / JP NC ...
-    DB      $70, $3E, $06, $18, $F4, $3A, $EE, $73 ; inline Z80: JP $8A01 / LD D,$04 ...
-    DB      $E6, $02, $28, $0A, $01, $00, $02, $CD ; inline Z80: LD A,($7072) / CP $00 / JR Z ...
-    DB      $E3, $90, $38, $C2, $18, $DA, $01, $00 ; inline Z80: DEC (HL) / LD A,(HL) / LD HL,$93AE ...
-    DB      $00, $CD, $E3, $90, $38, $B8, $C5, $CD ; inline Z80: CALL $A540 / LD A,($7076) / CP $90 ...
-    DB      $1E, $91, $C1, $D2, $2F, $8C, $C3, $01 ; inline Z80: CP $95 / JR NZ / LD A,($705B) ...
-    DB      $8A, $16, $04, $21, $72, $70, $7E, $FE ; inline Z80: CP $08 / JR Z / CP $08 ...
-    DB      $00, $28, $09, $35, $7E, $21, $AE, $93 ; inline Z80: CB $7F / LD A,($7059) / JR NZ ...
-    DB      $CD, $40, $A5, $56, $3A, $76, $70, $FE ; inline Z80: LD A,($7076) / CB $7F / LD A,($7077) ...
-    DB      $00, $28, $03, $32, $78, $70, $47, $4A ; inline Z80: AND $08 / RES ...
-    DB      $3A, $58, $70, $FE, $90, $CA, $0E, $8B ; inline Z80: LD C,$FF / XOR A / LD ($7076) ...
-    DB      $FE, $95, $20, $0A, $3A, $5B, $70, $FE ; inline Z80: CB $7F / JP NZ / LD BC,$0000 ...
-    DB      $08, $28, $03, $C3, $5B, $8B, $3A, $76 ; inline Z80: CALL $911E / POP BC / JR NC ...
-    DB      $70, $CB, $7F, $3A, $59, $70, $20, $03 ; inline Z80: CP $D2 / JR NZ / LD A,$05 ...
-    DB      $3A, $57, $70, $FE, $08, $20, $04, $AF ; inline Z80: CALL $AC1A / LD A,$0A / JR ...
-    DB      $32, $76, $70, $3A, $77, $70, $CB, $7F ; inline Z80: LD C,$00 / LD A,($7300) ...
-    DB      $C2, $39, $8C, $18, $03, $01, $04, $00 ; inline Z80: AND $0F / CP $04 / JR Z / CP $0C ...
-    DB      $C5, $CD, $1E, $91, $C1, $38, $79, $FE ; inline Z80: DEC A / DEC C / JR / PUSH BC ...
-    DB      $D2, $20, $09, $3E, $05, $CD, $1A, $AC ; inline Z80: CALL $AC1A / LD A,($71A8) ...
-    DB      $3E, $0A, $18, $56, $0E, $00, $3A, $00 ; inline Z80: CP $0A / JR NZ / LD A,($705F) ...
-    DB      $73, $E6, $0F, $FE, $04, $28, $08, $FE ; inline Z80: BIT 0 / JR Z / RES 2 / LD ($705F) ...
-    DB      $0C, $28, $04, $3D, $0D, $18, $F2, $C5 ; inline Z80: LD A,($707C) / LD B,A / LD A,($7300) ...
-    DB      $3E, $04, $CD, $1A, $AC, $3A, $A8, $71 ; inline Z80: JR NC / NEG / POP BC / CP $1C ...
-    DB      $FE, $0A, $20, $0F, $3A, $5F, $70, $CB ; inline Z80: JR Z / LD A,($7079) / CP $05 / JR Z ...
-    DB      $57, $28, $08, $CB, $97, $32, $5F, $70 ; inline Z80: LD B,A / LD A,($7304) / LD ($7300) ...
-    DB      $CD, $7E, $8E, $3A, $7C, $70, $47, $3A ; inline Z80: LD ($7304) / LD A,$09 / PUSH AF ...
-    DB      $00, $73, $B8, $38, $2D, $90, $C1, $FE ; inline Z80: CALL $8DC2 / LD A,$70 / LD ($70A9) ...
-    DB      $1C, $38, $28, $3A, $79, $70, $FE, $05 ; inline Z80: LD BC,$0000 / JP $8988 ...
-    DB      $28, $21, $3A, $00, $73, $47, $3A, $04 ; inline Z80: LD A,$01 / JP $8992 ...
-    DB      $73, $32, $00, $73, $78, $32, $04, $73 ; inline Z80: LD A,($705B) / CP $90 / JP NZ ...
-    DB      $3E, $09, $F5, $CD, $C2, $8D, $3E, $70 ; inline Z80: CALL $8B44 / PUSH BC / CALL $8B27 ...
-    DB      $32, $A9, $70, $F1, $01, $00, $00, $C3 ; inline Z80: LD A,($705B) / JR NC / LD A,$04 ...
-    DB      $88, $89, $C1, $3E, $01, $C3, $92, $89 ; inline Z80: JP $8C31 / PUSH HL / LD C,$0F ...
-    DB      $3A, $5B, $70, $FE, $90, $C2, $57, $8B ; inline Z80: LD E,$07 / JR / PUSH HL / LD C,$0C ...
-    DB      $CD, $44, $8B, $C5, $CD, $27, $8B, $C1 ; inline Z80: LD HL,($7301) / AND $0F / CP $08 ...
-    DB      $3A, $5B, $70, $30, $3C, $3E, $04, $C3 ; inline Z80: LD C,A / AND $F0 / ADD A,B / LD (HL) ...
-    DB      $31, $8C, $E5, $0E, $0F, $1E, $07, $18 ; inline Z80: INC HL (x4) / LD (HL),A / POP HL ...
-    DB      $05, $E5, $0E, $0C, $1E, $04, $21, $01 ; inline Z80: LD A,($7076) / CP $00 / JR Z ...
-    DB      $73, $7E, $E6, $0F, $FE, $08, $30, $01 ; inline Z80: CP $0F / JR NC / POP AF / JP $8C39 ...
-    DB      $4B, $7E, $E6, $F0, $81, $77, $23, $23 ; inline Z80: CP $95 / JR NZ / CALL $8B44 ...
-    DB      $23, $23, $77, $E1, $37, $C9, $3A, $76 ; inline Z80: CALL $8B27 / LD BC,$0400 / LD A,$06 ...
-    DB      $70, $FE, $00, $28, $08, $3A, $72, $70 ; inline Z80: CALL $AC1A / LD A,$05 / JP $8C3C ...
-    DB      $FE, $0F, $30, $01, $C9, $F1, $C3, $39 ; inline Z80: LD HL,$7300 / DEC (HL) / INC HL ...
-    DB      $8C, $FE, $95, $20, $F9, $CD, $44, $8B ; inline Z80: INC HL / LD (HL),$0E / XOR A ...
-    DB      $CD, $27, $8B, $01, $04, $00, $3E, $06 ; inline Z80: LD A,($70A9) / BIT 0 / JR NZ ...
-    DB      $CD, $1A, $AC, $3E, $05, $C3, $3C, $8C ; inline Z80: AND $03 / LD HL,$93A6 / CALL $9305 ...
-    DB      $21, $00, $73, $35, $23, $23, $36, $78 ; inline Z80: LD HL,($70A9) / DEC (HL) ...
-    DB      $23, $36, $0E, $AF, $32, $07, $73, $18 ; inline Z80: LD HL,($7049) / CP $00 / JR NZ ...
-    DB      $0F, $3A, $A9, $70, $CB, $57, $20, $08 ; inline Z80: LD ($7003) / XOR A / LD ($7303) ...
-    DB      $E6, $03, $21, $A6, $93, $CD, $05, $93 ; inline Z80: CALL $1FD6 / LD HL,$0000 / LD ($70BD) ...
-    DB      $21, $A9, $70, $35, $F2, $36, $8C, $21 ; inline Z80: LD ($70BE) / LD BC,$0109 / LD HL,$9409 ...
-    DB      $49, $70, $7E, $FE, $00, $20, $44, $36 ; inline Z80: LD DE,$016C / CALL $AEA7 ...
-    DB      $06, $AF, $32, $03, $73, $32, $07, $73 ; inline Z80: CALL $8C1F / LD A,($7373) / CP $C0 ...
-    DB      $CD, $D6, $1F, $21, $00, $00, $22, $BD ; inline Z80: JR NZ / LD HL,($705F) / BIT 0 ...
-    DB      $70, $22, $BE, $70, $01, $09, $01, $21 ; inline Z80: JR NZ / SET 6 / LD A,($71A6) ...
-    DB      $09, $94, $11, $6C, $01, $CD, $A7, $AE ; inline Z80: CP $01 / JR NZ / LD HL,$0000 ...
-    DB      $CD, $1F, $8C, $3A, $EE, $73, $FE, $C0 ; inline Z80: LD ($7017) / LD ($7018) / LD HL,($7303) ...
-    DB      $20, $F6, $21, $5F, $70, $CB, $46, $20 ; inline Z80: LD ($7307) / LD (HL),$06 ...
-    DB      $EF, $CB, $C6, $3A, $A6, $71, $FE, $01 ; inline Z80: LD HL,($707D) / LD ($7077) ...
-    DB      $20, $F9, $21, $00, $00, $22, $17, $70 ; inline Z80: continued -- LD ($7079) ...
-    DB      $22, $18, $70, $21, $03, $73, $36, $06 ; inline Z80: LD HL,($707B) / LD ($7075) / LD DE,$7300 ...
-    DB      $2E, $07, $36, $0B, $21, $7D, $70, $7E ; inline Z80: LD HL,($704B) / LD BC,$0008 / LDIR ...
-    DB      $32, $77, $70, $23, $7E, $32, $76, $70 ; "2wp#~2vp"
-    DB      $23, $7E, $32, $79, $70, $23, $7E, $32 ; "#~2yp#~2"
-    DB      $78, $70, $23, $7E, $32, $75, $70, $11 ; inline Z80: CALL $911E / PUSH HL / CB $DE ...
-    DB      $00, $73, $21, $4B, $70, $01, $08, $00 ; inline Z80: CB $5E / JR NZ / POP HL / RET ...
-    DB      $ED, $B0, $CD, $56, $91, $E5, $21, $B1 ; inline Z80: LD A,$00 / LD BC,$0000 / JR ...
-    DB      $70, $CB, $DE, $CB, $5E, $20, $FC, $E1 ; inline Z80: LD BC,$0000 / LD A,($7079) ...
-    DB      $C9, $CD, $76, $1F, $21, $F0, $73, $7E ; inline Z80: JP $8992 / LD A,($7373) / AND $05 ...
-    DB      $E6, $C0, $2B, $2B, $B6, $32, $EE, $73 ; inline Z80: JR Z / PUSH BC / CALL $91BD ...
-    DB      $C9, $3E, $00, $01, $00, $00, $18, $06 ; inline Z80: POP BC / LD HL,($705F) / RES 6 ...
-    DB      $01, $00, $00, $3A, $79, $70, $C3, $92 ; inline Z80: CB $F6 / RET ...
-    DB      $89, $3A, $EE, $73, $E6, $05, $FE, $00 ; inline Z80: LD A,($70B2) / LD B,A / AND $0F ...
-    DB      $28, $0B, $C5, $CD, $BD, $91, $C1, $21 ; inline Z80: JR Z (x2) / DEC B / LD ($70B2) / BIT 1 ...
-    DB      $5F, $70, $CB, $B6, $C9, $21, $5F, $70 ; inline Z80: LD BC,$0200 / CB $7F / JR Z ...
-    DB      $CB, $F6, $C9, $3A, $B2, $70, $47, $E6 ; inline Z80: JP $8C39 / CB $78 / LD BC,$0000 ...
-    DB      $0F, $FE, $00, $28, $16, $05, $78, $32 ; inline Z80: JP NZ $8A01 / CALL $8C3F ...
-    DB      $B2, $70, $CB, $48, $20, $CA, $01, $02 ; inline Z80: LD A,($705B) / LD A,($705B) / CALL $9122 ...
-    DB      $00, $CB, $7F, $28, $03, $01, $FE, $00 ; inline Z80: JP NC $8A01 / LD A,($7373) / AND $04 ...
-    DB      $C3, $39, $8C, $CB, $78, $01, $00, $00 ; inline Z80: JR Z / LD BC,$0001 / JR ...
-    DB      $C2, $01, $8A, $CD, $3F, $8C, $3A, $59 ; inline Z80: LD A,($705F) / BIT 5 / JR Z ...
-    DB      $70, $3A, $5B, $70, $CD, $22, $91, $D2 ; inline Z80: LD A,($7373) / AND $01 / JR NZ ...
-    DB      $01, $8A, $3A, $EE, $73, $E6, $04, $28 ; inline Z80: AND $01 / JR Z / JR ...
-    DB      $3A, $01, $01, $00, $18, $DA, $3A, $5F ; inline Z80: AND $01 / JR Z / LD A,$84 ...
-    DB      $70, $CB, $6F, $28, $0A, $3A, $EE, $73 ; inline Z80: LD ($70B2) / JP $8C36 ...
-    DB      $E6, $01, $20, $18, $C3, $55, $8D, $3A ; inline Z80: LD BC,$0000 / LD A,($7300) ...
-    DB      $EE, $73, $E6, $01, $28, $1D, $18, $0F ; inline Z80: JP $8A01 / LD A,($7373) / AND $01 ...
-    DB      $3A, $EE, $73, $E6, $01, $28, $14, $3E ; inline Z80: JR Z / LD BC,$FF00 / LD A,($7079) ...
-    DB      $84, $32, $B2, $70, $C3, $36, $8C, $01 ; inline Z80: CP $04 / JR NZ / LD A,($70AB) ...
-    DB      $00, $00, $3A, $00, $73, $32, $7C, $70 ; inline Z80: AND $01 / CP $00 / JR NZ / LD C,$00 ...
-    DB      $C3, $01, $8A, $3A, $EE, $73, $E6, $01 ; inline Z80: JP $8C39 / LD A,($7373) / AND $04 ...
-    DB      $28, $18, $01, $FF, $00, $3A, $79, $70 ; inline Z80: LD BC,$0100 / JR Z / CALL $911E ...
-    DB      $FE, $04, $20, $0B, $3A, $AB, $70, $E6 ; inline Z80: JP NC / JP $8A01 / CALL $8C3F ...
-    DB      $01, $FE, $00, $20, $02, $0E, $00, $C3 ; inline Z80: CALL $90E3 / JR NC / LD A,($7373) ...
-    DB      $39, $8C, $3A, $EE, $73, $E6, $04, $01 ; inline Z80: AND $08 / JR Z / LD BC,$00FE ...
-    DB      $01, $00, $28, $C8, $CD, $1E, $91, $30 ; inline Z80: BIT 5 / JR Z / LD A,($70AC) ...
-    DB      $EE, $C3, $01, $8A, $CD, $3F, $8C, $CD ; inline Z80: CP $01 / JR NZ / LD HL,($705F) ...
-    DB      $E3, $90, $30, $40, $3A, $EE, $73, $E6 ; inline Z80: CB $DE / CB $78 / LD B,$04 ...
-    DB      $08, $28, $21, $01, $00, $FE, $3A, $5F ; inline Z80: JP Z / JP $89DC ...
-    DB      $70, $CB, $6F, $28, $14, $3A, $AC, $70 ; inline Z80: AND $02 / JR Z / LD BC,$0002 ...
-    DB      $FE, $01, $20, $0D, $21, $5F, $70, $CB ; inline Z80: AND $01 / JR Z / LD C,$FE ...
-    DB      $DE, $CB, $78, $06, $04, $28, $02, $06 ; inline Z80: JP $8C39 / LD BC,$0000 / LD A,($7058) ...
-    DB      $FC, $C3, $DC, $89, $3A, $EE, $73, $E6 ; inline Z80: JP Z $8C9C / LD A,($705B) ...
-    DB      $02, $28, $11, $01, $00, $02, $18, $D6 ; inline Z80: CP $D8 / JR Z / CP $98 ...
-    DB      $3A, $EE, $73, $E6, $01, $28, $02, $0E ; inline Z80: CP $00 / JP NZ $8C87 ...
-    DB      $FE, $C3, $39, $8C, $01, $00, $00, $3A ; inline Z80: BIT 5 / JP NZ / LD BC,$0000 ...
-    DB      $58, $70, $FE, $00, $CA, $9C, $8C, $3A ; inline Z80: LD A,$A0 / LD ($707C) / LD A,($71A5) ...
-    DB      $5B, $70, $FE, $D8, $28, $09, $FE, $98 ; inline Z80: JP NZ $8A01 / LD A,$06 / JP $8988 ...
-    DB      $28, $05, $FE, $00, $C2, $87, $8C, $3A ; inline Z80: LD A,($7057) / BIT 3 / JR NZ ...
-    DB      $5F, $70, $CB, $6F, $C2, $3E, $8D, $01 ; inline Z80: INC (HL) / INC (HL) / LD A,($7059) ...
-    DB      $00, $00, $3E, $A0, $32, $7C, $70, $3A ; inline Z80: CALL $A894 / JR Z / LD A,($7058) ...
-    DB      $A5, $71, $C2, $01, $8A, $3E, $06, $C3 ; inline Z80: CP $E0 / JR NZ / LD A,($7000) ...
-    DB      $88, $89, $3A, $57, $70, $CB, $78, $20 ; inline Z80: BIT 5 / JR NZ (tail end)
-    DB      $08, $21, $B0, $71, $34, $34, $3A, $59 ; inline Z80: LD B,$34 / LD (IY+$34),A ...
-    DB      $70, $CD, $94, $A8, $28, $35, $3A, $58 ; inline Z80: LD A,($7059) / CALL $A894 ...
-    DB      $70, $FE, $E0, $20, $38, $3A, $00, $70 ; inline Z80: RET Z / LD A,($7058) ...
-    DB      $CB, $6F, $20, $31              ; inline Z80: BIT 5,($7000) / JR NZ (end of block)
+TITLE_PRESENTS:
+    DB      "PRESENTS"                      ; row 4
+
+TITLE_REVENGE:
+    DB      $C4, $C6, $90, $92, $D4, $D6, $90 ; REVENGE, top halves
+    DB      $92, $B4, $B6, $98, $9A, $90, $92
+
+TITLE_REVENGE_2:
+    DB      $C5, $C7, $91, $93, $D5, $D7, $91 ; bottom halves
+    DB      $93, $B5, $B7, $99, $9B, $91, $93
+
+TITLE_MONTEZUMAS:
+    DB      $B0, $B2, $B8, $BA, $B4, $B6, $CC, $CE, $90, $92, $E4 ; MONTEZUMA'S, top halves ($27: the apostrophe)
+    DB      $E6, $D0, $D2, $B0, $B2, $80, $82, $27, $C8, $CA
+
+TITLE_MONTEZUMAS_2:
+    DB      $B1, $B3, $B9, $BB, $B5, $B7, $CD, $CF, $91, $93, $E5 ; bottom halves
+    DB      $E7, $D1, $D3, $B1, $B3, $81, $83, $00, $C9, $CB
+
+; LOAD_TILE_COLOURS ($8308): the boot tile colours. Frames and rooms change
+; some of them later ($8EB0, $A8D6).
+LOAD_TILE_COLOURS:
+    LD      A, $04                          ; table 4: tile colours
+    CALL    LOADER
+    DW      BOOT_COLOURS                    ; entries 0-27 (tiles $00-$DF)
+    DB      $00, 28
+    DB      $00, $00                        ; end
+    RET
+
+; MIRROR_TILES ($8314): mirror tiles of the current pattern table into
+; their facing-the-other-way twins (list at $837D).
+MIRROR_TILES:
+    LD      HL, MIRROR_TILE_LIST
+    JP      REFLECT_LIST
+
+; Lists for REFLECT_LIST ($AE3B): a mode (0: upside down, 1: left-right),
+; a PUT_VRAM table, then (from, to) pattern pairs up to $FF.
+;
+; The rolling skull's upside-down frames: sprite $18 is $10 upside down,
+; $1C is $0C (the top and bottom quarters swap too).
+FLIP_SPRITES:
+    DB      $00, $01                        ; upside down, sprite patterns
+    DB      $10, $19, $11, $18, $12, $1B, $13, $1A
+    DB      $0C, $1D, $0D, $1C, $0E, $1F, $0F, $1E
+    DB      $FF                             ; end
+
+; MIRROR_SPRITES ($8352) list: (sprite, right half of its mirror image)
+; pairs up to $FF; the sprite's left half mirrors into the right half of
+; the new one and its right half into the left. Joe facing left, the
+; rolling skull's other frames and the spider's second frame.
+MIRROR_SPRITE_LIST:
+    DB      $D4, $DE                        ; Joe zapped: legs $D4 -> $DC,
+    DB      $D8, $E2                        ; body $D8 -> $E0
+    DB      $18, $22                        ; rolling skull: $18 -> $20,
+    DB      $14, $26                        ; $14 -> $24,
+    DB      $10, $2A                        ; $10 -> $28
+    DB      $2C, $32                        ; spider: $2C -> $30
+    DB      $34, $42                        ; Joe's body: standing $34 -> $40,
+    DB      $4C, $52                        ; jumping $4C -> $50,
+    DB      $54, $5A                        ; ladder $54 -> $58,
+    DB      $5C, $62                        ; rope $5C -> $60
+    DB      $98, $A6                        ; legs: standing $98 -> $A4
+    DB      $6C, $7E                        ; body: walking $6C -> $7C
+    DB      $9C, $AA                        ; legs: walking $9C -> $A8,
+    DB      $A0, $AE                        ; $A0 -> $AC,
+    DB      $A0, $AE                        ; (again)
+    DB      $B0, $B6                        ; jumping $B0 -> $B4,
+    DB      $B8, $BE                        ; ladder $B8 -> $BC,
+    DB      $C0, $C6                        ; rope $C0 -> $C4
+    DB      $FF                             ; end
+
+; MIRROR_SPRITES ($8352): mirror 16x16 sprite patterns across a vertical
+; axis, from the list at $832D.
+MIRROR_SPRITES:
+    LD      HL, MIRROR_SPRITE_LIST
+
+MIRROR_SPRITES_LOOP:
+    LD      A, (HL)
+    CP      $FF
+    RET     Z
+    LD      D, $00                          ; DE: the sprite
+    LD      BC, $0002
+    LD      E, A
+    INC     HL
+    PUSH    HL
+    LD      A, (HL)                         ; HL: its mirror image's right half
+    LD      L, A
+    LD      H, $00
+    LD      A, $01                          ; table 1: sprite patterns
+    PUSH    DE
+    PUSH    HL
+    PUSH    BC
+    PUSH    AF
+    CALL    REFLECT_VERTICAL                ; its left column into the right one
+    POP     AF
+    POP     BC
+    POP     HL
+    POP     DE
+    INC     DE
+    INC     DE
+    DEC     HL
+    DEC     HL
+    CALL    REFLECT_VERTICAL                ; its right column into the left one
+    POP     HL
+    INC     HL
+    JR      MIRROR_SPRITES_LOOP
+
+; MIRROR_TILES list: the creature facing the other way ($A0-$A3 ->
+; $A4-$A7), the conveyor pushing the other way ($04-$06 -> $BA-$B8), and
+; the right halves of the torch ($62 -> $63, $D0 -> $D1).
+MIRROR_TILE_LIST:
+    DB      $01, $03                        ; left-right, tile patterns
+    DB      $A0, $A4                        ; creature
+    DB      $A1, $A5
+    DB      $A2, $A6
+    DB      $A3, $A7
+    DB      $04, $BA                        ; conveyor
+    DB      $05, $B9
+    DB      $06, $B8
+    DB      $62, $63                        ; torch
+    DB      $D0, $D1
+    DB      $FF                             ; end
+
+; LOAD_TILESET ($8392): point the video chip at pattern table C (A: its
+; address's high byte, kept in $73F9) and load the BIOS font and the main
+; tileset into it.
+LOAD_TILESET:
+    PUSH    AF
+    LD      B, $04                          ; register 4: the pattern table
+    CALL    WRITE_REGISTER
+    POP     AF
+    LD      ($73F9), A                      ; the table the BIOS writes patterns to
+    CALL    LOAD_ASCII
+    LD      A, $03                          ; table 3: tile patterns
+    CALL    LOADER
+    DW      GFX_BRICK                       ; brick, and the HUD boxes' edges ($09-$0C)
+    DB      $08, 5
+    DW      GFX_ROPE                        ; rope; $91-$94 (a key, unused); $95 (replaced
+    DB      $90, 8                          ; below); the sword's top half ($96-$97)
+    DW      GFX_AMULET                      ; amulet's left half (HUD icon); torch base
+    DB      $60, 3
+    DW      GFX_HAT                         ; a hat (spare life)
+    DB      $6F, 1
+    DW      GFX_SWORD_BOTTOM                ; the sword's bottom half (HUD icon)
+    DB      $6C, 2
+    DW      GFX_SWORD_TOP                   ; the sword's top half (HUD icon)
+    DB      $74, 2
+    DW      GFX_JEWEL                       ; the jewel's left half; the sword's bottom half
+    DB      $98, 4
+    DW      GFX_KEY                         ; keys: blue,
+    DB      $68, 4
+    DW      GFX_KEY                         ; red,
+    DB      $70, 4
+    DW      GFX_KEY                         ; gold
+    DB      $78, 4
+    DW      GFX_CREATURE                    ; creature
+    DB      $A0, 4
+    DW      GFX_AMULET                      ; the amulet's left half; $AA (unused)
+    DB      $A8, 3
+    DW      GFX_DOOR                        ; red door: closed, open (top, the rest); $C4: a
+    DB      $C0, 6                          ; rope's top; $C5 (unused)
+    DW      GFX_DOOR                        ; red door's bottom
+    DB      $C7, 1
+    DW      GFX_DOOR                        ; pole: the doors' bar
+    DB      $95, 1
+    DW      GFX_DOOR                        ; gold door, as the red one
+    DB      $B0, 5
+    DW      GFX_DOOR                        ; gold door's bottom
+    DB      $B7, 1
+    DW      GFX_DOOR                        ; blue door
+    DB      $BB, 5
+    DW      GFX_DOOR                        ; blue door's bottom
+    DB      $9C, 1
+    DW      GFX_LADDER                      ; a ladder's top, set into a floor
+    DB      $10, 2
+    DW      GFX_LADDER                      ; ladder
+    DB      $88, 2
+    DW      GFX_DIGITS_TOP                  ; big digits: top halves
+    DB      $18, 10
+    DW      GFX_DIGITS_BOTTOM               ; bottom halves
+    DB      $28, 10
+    DW      GFX_BARRIER                     ; barrier (redrawn as it crackles, $A92F)
+    DB      $E0, 1
+    DW      GFX_DISAPPEARING                ; disappearing floor (the same)
+    DB      $E8, 1
+    DB      $00, $00                        ; end
+    RET
+
+; CLEAR_RAM ($840B): clear BC + 1 bytes from HL.
+CLEAR_RAM:
+    LD      (HL), $00
+    PUSH    HL
+    POP     DE
+    INC     DE
+    LDIR
+    RET
+
+; CLEAR_VRAM ($8413): clear all 16 KB of video memory.
+CLEAR_VRAM:
+    LD      HL, $0000
+    LD      DE, $4000
+    XOR     A
+    CALL    FILL_VRAM
+    RET
 
 ; =============================================================================
-; GAME STATE / ROOM TRANSITION -- LOC_8DA2 ($8DA2)
-; Central state handler called at end of each action frame.  Dispatches based
-; on $7079 (game state):
-;   $7079 != $08: CALL SUB_AC1A (state $05) -- trigger room transition
-;                 LD $7079=$08, $70A9=$70, $7306=$D4
-;                 CALL SUB_8DC2 (decrement $7049 life counter)
-; Continues to LOC_8DD3 which updates $7300/$7304 (player tile X/Y positions)
-; by adding carry values from C/B registers.
-; Also handles: door open/close, key pickup, skull/enemy collision decrement.
-; LOC_929B (line 1018) -> JP LOC_8DA2 is the inner loop re-entry point.
+; GRAPHICS
+; Tile and sprite patterns, 8 bytes each, as the loader calls at $8081 (sprite
+; patterns), $81DC (animated tiles) and $8392 (main tileset) copy them. A 16x16
+; sprite is four patterns: top left, bottom left, top right, bottom right.
+; Some blocks overlap, and some patterns serve as both tiles and sprites.
 ; =============================================================================
-LOC_8DA2:
-    LD      A, ($7079)                      ; A = ($7079) game state ($08 = normal play)
-    CP      $08                             ; CP $08: check normal play state
-    JR      Z, LOC_8DD3                     ; JR Z, LOC_8DD3: normal play -- skip room-transition logic
-    LD      A, $05                          ; A = $05 (sound effect: room-exit chime)
-    CALL    SUB_AC1A                        ; CALL SUB_AC1A: trigger sound effect $05
-    LD      A, $08                          ; A = $08
-    LD      ($7079), A                      ; ($7079) = $08: set state back to normal play
-    LD      A, $70                          ; A = $70
-    LD      ($70A9), A                      ; ($70A9) = $70: reset scroll position
-    LD      A, $D4                          ; A = $D4
-    LD      ($7306), A                      ; ($7306) = $D4: set room-transition column marker
-    CALL    SUB_8DC2                        ; CALL SUB_8DC2: DEC life counter ($7049)
-    JR      LOC_8DD3                        ; JR LOC_8DD3: fall through to player position update
+;
+; Boot tile colours, one byte per 8 tiles (foreground colour in the high
+; nibble, background in the low): entries 0-27, loaded by $8308.
+BOOT_COLOURS:
+    DB      $90, $A7, $4A, $8B, $B1, $F0, $F0, $F0 ; tiles $00-$3F
+    DB      $F0, $F0, $F0, $F0, $20, $90, $E0, $40 ; tiles $40-$7F
+    DB      $40, $40, $E0, $90, $20, $20, $40, $90 ; tiles $80-$BF
+    DB      $E0, $4A, $90, $60              ; tiles $C0-$DF
+    DB      $40, $40, $00, $00, $00, $00    ; not loaded: the barrier task sets entries 28 and 29
 
-SUB_8DC2:
-    PUSH    HL                              ; PUSH HL
-    LD      HL, $7049                       ; HL = $7049 (life counter)
-    DEC     (HL)                            ; DEC (HL): player loses one life
-    POP     HL                              ; POP HL
-    RET                                     ; RET
-    DB      $CB, $79, $20, $04, $AF, $32, $76, $70 ; inline data (post-RET): BIT 3 A / JR NZ ...
-    DB      $1E, $00                        ; inline data (post-RET): LD E,$00 (tail)
+GFX_BRICK:
+    DB      $FB, $FB, $FB, $00, $7F, $7F, $7F, $00 ; $08 brick
+    DB      $FB, $FB, $FB, $00, $00, $00, $00, $00 ; $09-$0C the HUD boxes' top, left, right and bottom edges
+    DB      $F0, $F0, $F0, $00, $F0, $F0, $F0, $00
+    DB      $0B, $0B, $0B, $00, $0F, $0F, $0F, $00
+    DB      $00, $00, $00, $00, $7F, $7F, $7F, $00
 
-LOC_8DD3:
-    LD      B, E                            ; B = E (secondary delta)
-    LD      HL, $7300                       ; HL = $7300 (player tile X lo)
-    LD      A, (HL)                         ; A = ($7300) current X
-    ADD     A, C                            ; ADD A, C: X += C (delta)
-    LD      (HL), A                         ; ($7300) = A: store new X
-    INC     HL                              ; INC HL -> $7301
-    LD      A, (HL)                         ; A = ($7301) X hi byte
-    ADD     A, B                            ; ADD A, B: X hi += B
-    LD      (HL), A                         ; ($7301) = A: store new X hi
-    LD      L, $04                          ; LD L,$04 -> HL = $7304 (secondary X)
-    LD      A, (HL)                         ; A = ($7304) secondary X
-    ADD     A, C                            ; ADD A, C: += C
-    LD      (HL), A                         ; ($7304) = A: store new secondary X
-    INC     HL                              ; INC HL -> $7305
-    LD      A, (HL)                         ; A = ($7305)
-    ADD     A, B                            ; ADD A, B
-    LD      (HL), A                         ; ($7305) = A: store new secondary X hi
-    RET                                     ; RET
-    DB      $21, $76, $70, $5E, $23, $4E, $CD, $80 ; inline Z80: LD HL,$7076 / LD E,(HL) / INC HL / LD C,(HL)
-    DB      $8D, $FE, $04, $38, $05, $FE, $F0, $DA ; inline Z80: CALL $8D80 / CP $04 / JR C / CP $F0 ...
-    DB      $23, $8F, $21, $A8, $71, $34, $CB, $78 ; inline Z80: JP $8F23 / LD HL,($71A8) / INC (HL) ...
-    DB      $28, $07, $35, $35, $01, $00, $EC, $18 ; inline Z80: BIT 3 / JR Z (x2) / LD BC,$00EC ...
-    DB      $03, $01, $00, $16, $F5, $3A, $A7, $71 ; inline Z80: LD BC,$0016 / PUSH AF / LD A,($71A7) ...
-    DB      $FE, $09, $38, $63, $3E, $01, $CD, $1A ; inline Z80: CP $09 / JR NC / LD A,$01 / CALL $AC1A ...
-    DB      $AC, $3A, $79, $70, $FE, $05, $20, $3B ; inline Z80: LD A,($7079) / CP $05 / JR NZ ...
-    DB      $AF, $32, $A7, $71, $3E, $08, $32, $A8 ; inline Z80: XOR A / LD ($71A7) / LD A,$08 / LD ($71A8)
-    DB      $71, $3A, $5F, $70, $CB, $9F, $CB, $AF ; inline Z80: LD A,($705F) / BIT 1 / JR Z ...
-    DB      $CB, $D7, $32, $5F, $70, $C5, $E5, $D5 ; inline Z80: PUSH HL,BC / LD HL,$70C6 ...
-    DB      $21, $A6, $71, $7E, $FE, $09, $30, $01 ; inline Z80: CALL $840B / CALL $A8B7 / LD BC,$0700 ...
-    DB      $34, $21, $C0, $70, $01, $C6, $00, $CD ; inline Z80: CALL $1FD9 / CALL $A8C3 / POP DE+HL+BC ...
-    DB      $0B, $84, $CD, $B7, $A8, $01, $00, $07 ; inline Z80: JR / LD A,($705F) / BIT 5 ...
-    DB      $CD, $D9, $1F, $CD, $C3, $A8, $D1, $E1 ; inline Z80: JR NZ / LD A,$F0 / LD ($70AC) ...
-    DB      $C1, $18, $1C, $3A, $5F, $70, $CB, $6F ; inline Z80: CALL $AC06 / POP AF / CALL $8DD4 ...
-    DB      $CB, $DF, $CB, $EF, $32, $5F, $70, $20 ; inline Z80: LD HL,$7077 / LD (HL),A ...
-    DB      $08, $3E, $F0, $32, $AC, $70, $CD, $06 ; inline Z80: LD ($7076) ...
-    DB      $AC, $F1, $CD, $D4, $8D, $18, $07, $F1 ; inline Z80: LD ($7078) / LD ($7075) ...
-    DB      $CD, $D4, $8D, $CD, $13, $8C, $21, $7D ; inline Z80: LD HL,$7300 / LD A,(HL) / LD ($707C) ...
-    DB      $70, $3A, $77, $70, $77, $23, $3A, $76 ; "p:wpw#:v"
-    DB      $70, $77, $23, $3A, $79, $70, $77, $23 ; "pw#:ypw#"
-    DB      $3A, $78, $70, $77, $3A, $75, $70, $23 ; ":xpw:up#"
-    DB      $77, $21, $00, $73, $7E, $32, $7C, $70 ; inline Z80: LD ($7077) / LD HL,$7300 / LD A,(HL) ...
-    DB      $11, $4B, $70, $01, $08, $00, $ED, $B0 ; inline Z80: LD DE,($704B) / LD BC,$0008 / LDIR ...
-    DB      $E5, $21, $B1, $70, $CB, $E6, $E1, $C9 ; inline Z80: PUSH HL / SET 6,(HL) / POP HL / RET
+GFX_DIGITS_TOP:
+    DB      $38, $7C, $FE, $FE, $EE, $C6, $C6, $C6 ; $18-$21 big digits 0-9, top halves
+    DB      $38, $78, $F8, $F8, $F8, $F8, $38, $38
+    DB      $38, $7C, $FE, $FE, $EE, $C6, $C6, $0E
+    DB      $38, $7C, $FE, $FE, $FE, $C6, $06, $1C
+    DB      $1C, $3C, $3C, $7C, $7C, $EC, $EC, $CC
+    DB      $FE, $FE, $FE, $FE, $C6, $E0, $F8, $3E
+    DB      $38, $7C, $FE, $FE, $EE, $C0, $F8, $FC
+    DB      $FE, $FE, $FE, $FE, $FE, $0E, $0E, $1E
+    DB      $38, $7C, $FE, $FE, $EE, $C6, $EE, $7C
+    DB      $38, $7C, $FE, $FE, $EE, $C6, $EE, $7E
+
+GFX_DIGITS_BOTTOM:
+    DB      $EE, $FE, $FE, $FE, $FE, $FE, $7C, $38 ; $28-$31 bottom halves
+    DB      $38, $38, $38, $38, $FE, $FE, $FE, $FE
+    DB      $1E, $3C, $78, $70, $FE, $FE, $FE, $FE
+    DB      $1C, $06, $C6, $EE, $FE, $FE, $7C, $38
+    DB      $CC, $FE, $FE, $FE, $FE, $FE, $18, $18
+    DB      $0E, $C6, $C6, $EE, $FE, $FE, $7C, $38
+    DB      $EE, $C6, $EE, $FE, $FE, $FE, $7C, $38
+    DB      $1E, $1C, $3C, $38, $78, $78, $70, $70
+    DB      $EE, $C6, $EE, $FE, $FE, $FE, $7C, $38
+    DB      $3E, $06, $C6, $EE, $FE, $FE, $7C, $38
+
+GFX_HAT:
+    DB      $00, $00, $3C, $3C, $7E, $7E, $00, $00 ; $6F a hat: a spare life in the HUD
+
+; Fire's flame tops: $D2-$D5 in each pattern table, the four patterns turned
+; one place further each time, so the flames move.
+GFX_FIRE:
+    DB      $08, $06, $07, $07, $0F, $1F, $7F, $FF
+    DB      $00, $00, $24, $33, $71, $FD, $FF, $FF
+    DB      $00, $00, $01, $81, $F1, $F9, $FB, $FF
+    DB      $00, $80, $00, $81, $C2, $E6, $EF, $FF
+
+; Conveyor frames, $04-$06 in each pattern table (mirrored into $B8-$BA):
+; four blocks of 24 bytes, the second and fourth starting on the previous
+; one's last 2 bytes.
+GFX_CONVEYOR:
+    DB      $C0, $C0, $3F, $3F, $3F, $3F, $03, $03 ; table 1
+    DB      $C0, $C0, $FF, $FF, $FF, $FF, $03, $03
+    DB      $C0, $C0, $FC, $FC, $FC, $FC
+
+GFX_CONVEYOR_2:
+    DB      $03, $03, $3F, $FF, $FF, $3F, $00, $00 ; table 2
+    DB      $03, $03, $FF, $FF, $FF, $FF, $C0, $C0
+    DB      $00, $00, $FC, $FF, $FF, $FC, $C0, $C0
+
+GFX_CONVEYOR_3:
+    DB      $0C, $0C, $3F, $3F, $3F, $3F, $C0, $C0 ; table 5
+    DB      $0C, $0C, $FF, $FF, $FF, $FF, $30, $30
+    DB      $03, $03, $FC, $FC, $FC, $FC
+
+GFX_CONVEYOR_4:
+    DB      $30, $30, $3F, $3F, $3F, $3F, $0C, $0C ; table 0
+    DB      $30, $30, $FF, $FF, $FF, $FF, $0C, $0C
+    DB      $30, $30, $FC, $FC, $FC, $FC, $0C, $0C
+
+GFX_JEWEL:
+    DB      $00, $7E, $81, $BD, $BD, $BD, $BD, $BD ; $98-$99 jewel: left half (the right half, $D8-$D9, is blank)
+    DB      $BD, $BD, $BD, $81, $7E, $00, $00, $00
+
+GFX_SWORD_BOTTOM:
+    DB      $03, $03, $0F, $0F, $03, $03, $03, $00 ; $9A-$9B sword: bottom half; also its HUD icon's ($6C-$6D)
+    DB      $80, $80, $E0, $E0, $80, $80, $80, $00
+
+GFX_LADDER:
+    DB      $30, $30, $30, $30, $3F, $30, $30, $30 ; $88-$89 ladder; also $10-$11, its top set into a floor
+    DB      $0C, $0C, $0C, $0C, $FC, $0C, $0C, $0C
+
+; Barrier ($E0): an 8-byte window into these 14 bytes, 2 bytes further on
+; each frame of $7096, so the gap in the beam moves ($A97A).
+GFX_BARRIER:
+    DB      $7C, $6C, $6C, $6C, $6C, $7C, $10
+    DB      $10, $7C, $6C, $6C, $6C, $6C, $7C
+
+; Disappearing floor ($E8): one of these two patterns by frame parity.
+GFX_DISAPPEARING:
+    DB      $FF, $66, $C3, $66, $FF, $00, $00, $00
+    DB      $FF, $66, $18, $66, $FF, $00, $00, $00
+
+GFX_SPIDER:
+    DB      $00, $00, $00, $00, $00, $00, $00, $08 ; sprite $2C spider (mirrored into $30)
+    DB      $14, $23, $09, $17, $23, $0B, $17, $21
+    DB      $00, $00, $00, $00, $00, $10, $28, $44
+    DB      $90, $A8, $C4, $D0, $E8, $C4, $C0, $80
+
+GFX_ROPE:
+    DB      $18, $18, $18, $18, $0C, $0C, $0C, $0C ; $90 rope
+
+GFX_KEY:
+    DB      $07, $0F, $1C, $1C, $0F, $03, $03, $01 ; $68-$6B, $70-$73, $78-$7B keys; $91-$94 (unused)
+    DB      $E0, $F0, $38, $38, $F0, $C0, $C0, $80
+    DB      $01, $01, $03, $01, $03, $01, $00, $00
+    DB      $80, $80, $80, $80, $80, $80, $00, $00
+    DB      $3C, $1C, $00, $00, $00, $38, $3C, $3C ; sprite $9D: Joe's walking legs; $95 (replaced)
+
+GFX_SWORD_TOP:
+    DB      $02, $03, $03, $03, $03, $03, $03, $03 ; $96-$97 sword: top half; its HUD icon's ($74-$75)
+    DB      $00, $00, $80, $80, $80, $80, $80, $80
+
+GFX_AMULET:
+    DB      $00, $2D, $3F, $3F, $2D, $0C, $0C, $0C ; $A8-$A9 amulet: left half (the right half, $AE-$AF,
+    DB      $0C, $0C, $0C, $0C, $0C, $00, $00, $00 ; is blank); its HUD icon's ($60-$61)
+    DB      $1F, $0F, $03, $03, $03, $01    ; $62 torch base, left half (mirrored into $63); $AA
+
+GFX_CREATURE:
+    DB      $00, $00, $00, $03, $0C, $0F, $00, $00 ; (unused); from here $A0-$A3 creature (mirrored into $A4-$A7)
+    DB      $00, $00, $00, $C0, $E0, $F0, $30, $F0
+    DB      $07, $1E, $18, $18, $18, $0C, $06, $03
+    DB      $C0, $00, $00, $00, $01, $03, $0E, $FC
+
+GFX_CREATURE_2:
+    DB      $00, $00, $00, $03, $0C, $3F, $00, $00 ; its other frame: $A0 and $A3 in pattern tables 2 and 5
+    DB      $C0, $00, $00, $00, $04, $0C, $0C, $FC
+
+; Doors, and a pole: the same bar. Each door is $B0/$BB/$C0 (closed), its
+; open top (+1, +2) and open rest (+3), then $C4 a rope's top and $C5
+; (unused); the bottom tiles $B7/$9C/$C7 and the pole $95 are the bar.
+GFX_DOOR:
+    DB      $7E, $7E, $7E, $7E, $7E, $7E, $7E, $7E
+    DB      $00, $07, $0F, $09, $29, $6F, $E9, $E9
+    DB      $00, $E0, $E0, $28, $2C, $EE, $2F, $2F
+    DB      $EF, $EF, $EF, $EF, $EF, $EF, $EF, $EF
+    DB      $FF, $FF, $7E, $7E, $3C, $3C, $3C, $3C
+
+GFX_JOE_BODY:
+    DB      $07, $07, $1F, $3F, $38, $08, $00, $1F ; (overlapping $C5) sprite $34 Joe's body, standing
+    DB      $3F, $0F, $07, $03, $33, $3F, $3C, $38
+    DB      $C0, $C0, $F8, $F8, $80, $00, $00, $E0
+    DB      $C0, $C0, $C0, $C0, $E0, $E0, $E0, $E0
+
+GFX_JOE_LEGS:
+    DB      $00, $07, $07, $07, $00, $00, $30, $38 ; sprite $98 Joe's hat, face and legs, standing
+    DB      $3C, $1C, $00, $00, $00, $38, $3C, $1C
+    DB      $00, $60, $E0, $C0, $00, $B0, $30, $BC
+    DB      $3C, $80, $00, $00, $00, $E0, $F0, $F0
+
+GFX_JOE_WALK:
+    DB      $3F, $0F, $07, $03, $33, $3F, $07, $07 ; walking body: lower quarters ($6D, $6F)
+    DB      $C0, $C0, $C0, $C0, $E0, $E0, $00, $00
+    DB      $3C, $80, $00, $00, $18, $F8, $E0, $00 ; walking legs: $9F,
+    DB      $3C, $1C, $00, $00, $00, $07, $07, $07 ; $A1, $A3
+    DB      $3C, $80, $00, $00, $00, $00, $80, $80
+    DB      $07, $0F, $0F, $3F, $3F, $1F, $0F, $0F ; jumping body: lower quarters ($4D, $4F)
+    DB      $C0, $C0, $C0, $E0, $E0, $F0, $70, $70
+
+GFX_JOE_JUMP:
+    DB      $00, $07, $07, $27, $70, $78, $70, $30 ; sprite $B0 jumping legs
+    DB      $00, $00, $00, $00, $00, $0F, $0F, $0F
+    DB      $00, $60, $E0, $C0, $0C, $3C, $3C, $B8
+    DB      $00, $86, $0E, $0E, $0C, $00, $80, $80
+
+GFX_JOE_CLIMB:
+    DB      $03, $03, $1F, $1F, $0F, $03, $02, $01 ; sprite $54 body on a ladder, rope or pole
+    DB      $39, $3F, $3F, $0F, $0F, $0F, $0F, $0F
+    DB      $C0, $C0, $F8, $F8, $F0, $C0, $40, $80
+    DB      $98, $FC, $FC, $F0, $F0, $F0, $F0, $F0
+
+GFX_JOE_LADDER_LEGS:
+    DB      $00, $00, $30, $39, $36, $06, $01, $00 ; sprite $B8 legs on a ladder
+    DB      $00, $00, $00, $00, $00, $0E, $00, $00
+    DB      $00, $00, $00, $80, $60, $60, $80, $00
+    DB      $0C, $0C, $00, $00, $00, $60, $70, $70
+    DB      $1A, $1F, $1F, $0F, $0F, $07, $01, $00 ; body on a rope: lower quarters ($5D, $5F)
+    DB      $40, $FC, $FC, $FC, $FC, $FC, $F0, $F0
+
+GFX_JOE_ROPE_LEGS:
+    DB      $00, $00, $00, $01, $1A, $01, $00, $00 ; sprite $C0 legs on a rope
+    DB      $00, $00, $00, $06, $03, $03, $00, $00
+    DB      $00, $00, $00, $80, $40, $98, $00, $00
+    DB      $00, $00, $00, $00, $00, $60, $E0, $80
+
+GFX_JOE_POLE_LEGS:
+    DB      $00, $00, $00, $01, $06, $06, $01, $00 ; sprite $C8 legs on a pole
+    DB      $00, $00, $00, $00, $34, $3E, $1E, $0C
+    DB      $00, $00, $00, $80, $60, $60, $80, $00
+    DB      $00, $00, $00, $00, $2C, $7C, $78, $30
+
+; The fire pit's flames ($38), a pattern for each pattern table (1, 2, then
+; 5 and 0).
+GFX_FLAMES:
+    DB      $00, $10, $08, $20, $14, $22, $08, $42
+
+GFX_FLAMES_2:
+    DB      $00, $00, $24, $10, $28, $08, $10, $2C
+
+GFX_FLAMES_3:
+    DB      $00, $10, $2C, $30, $3C, $2A, $18, $6E
+
+GFX_JOE_DEAD_LEGS:
+    DB      $00, $0C, $3C, $78, $70, $60, $60, $7E ; sprite $CC (and $D0) Joe lying dead: legs
+    DB      $00, $00, $00, $03, $04, $0B, $10, $1F
+    DB      $00, $00, $00, $78, $78, $60, $60, $60
+    DB      $60, $00, $00, $00, $80, $40, $20, $F8
+    DB      $78, $78, $78, $18, $18, $18, $1E, $06 ; the other frame: upper quarters ($D0, $D2)
+    DB      $00, $00, $00, $00, $1C, $1C, $7C, $60
+
+GFX_SKULL_ROLL:
+    DB      $00, $0F, $1F, $3F, $7E, $7E, $7F, $73 ; sprite $10 rolling skull, 45 degrees
+    DB      $37, $1F, $0F, $03, $00, $00, $00, $00
+    DB      $00, $00, $80, $C0, $60, $E0, $F0, $F0
+    DB      $CC, $CC, $3C, $3C, $F8, $F0
+
+GFX_SKULL_ROLL_2:
+    DB      $00, $00, $00, $00, $1E, $3B, $73, $F3 ; (overlapping) sprite $14 rolling skull, 90 degrees
+    DB      $FF, $FF, $F3, $73, $3B, $1E, $00, $00
+    DB      $00, $00, $00, $00, $00, $00, $B8, $18
+    DB      $B8, $B8, $18, $B8
+
+GFX_JOE_DEAD:
+    DB      $00, $00, $00, $00              ; (overlapping) sprite $68 Joe lying dead: body
+    DB      $00, $0E, $1F, $1F, $3C, $3B, $34, $2F
+    DB      $00, $3C, $3F, $07, $00, $00, $00, $00
+    DB      $00, $00, $C0, $F8, $F8, $78, $A0, $D8
+    DB      $00, $F8, $F8, $E0
+
+GFX_JOE_BURNT:
+    DB      $07, $1F, $7F, $FF, $FF, $7F, $3F, $FF ; sprite $78 Joe burnt: his ghost
+    DB      $FF, $7F, $3E, $3C, $18, $00, $00, $00
+    DB      $E0, $F8, $FC, $FF, $FF, $FE, $FF, $FF
+    DB      $FE, $64, $30, $30, $60, $C0, $C0, $60
+
+GFX_SKULL:
+    DB      $00, $03, $07, $0F, $1F, $19, $11, $1F ; sprite $0C skull
+    DB      $0F, $0F, $05, $00, $05, $07, $07, $00
+    DB      $00, $C0, $E0, $F0, $F8, $98, $88, $F8
+    DB      $F0, $F0, $A0, $00, $A0, $E0, $E0
+
+; The torch's flame ($D0, mirrored into $D1): pattern tables 1 and 5, 2,
+; and 0; the first overlaps the skull's last byte.
+GFX_TORCH:
+    DB      $00, $01, $01, $03, $07, $0F, $0F, $1F
+
+GFX_TORCH_2:
+    DB      $00, $00, $00, $03, $07, $07, $0F, $1F
+
+GFX_TORCH_3:
+    DB      $00, $04, $03, $07, $07, $0F, $1F, $1F
+
+; Joe's two sprites at boot (Y, X, pattern, colour): the top of the
+; entrance hall's left pole.
+JOE_START_SPRITES:
+    DB      $18, $0C, $04, $06              ; body: red
+    DB      $1B, $0C, $08, $0B              ; hat, face and legs: yellow
 
 ; =============================================================================
-; FRAME GAME BODY -- DELAY_LOOP_8EB0 ($8EB0)
-; Called from NMI each frame (when $70B1 bit 4 is set).  Runs all per-frame
-; game subsystems:
-;   CALL SUB_8308        render current room tiles to VRAM (calls SUB_AE00 $04)
-;   load $71A7 (player speed) -> compute animation frame count (B=6..8 x speed)
-;   CALL TABLE_BYTE  read the table at $93C0
-;   LD DE,$0001 / LD IY,$0007 / CALL SUB_AE2E  write sprite attribute block
-;   $71A6 (room difficulty) -> B: cap player max speed
-;   $71A7 (current speed) vs B: CALL SUB_908F ($53) -- item pickup check
-;   if bit 5 of $705F clear: CALL SUB_AE00 $04 (re-render room tiles)
+; MOVE_TASK ($88D1): main-loop task, every frame (table at $A8A1). Set Joe's
+; sprite patterns, move the enemies, read the joystick, then run Joe's state
+; handler and apply his velocity (JOE_MOVE).
+;
+; Joe's RAM: $7300-$7307 his two sprites (body; hat, face and legs 3 lines
+; lower), $7079 state, $7076/$7077 velocity (DX, DY), $7078 facing (the last
+; non-zero DX), $7072 jump counter, $707C where a fall or jump began (Y),
+; $70B2 the climb-down-onto-a-ladder counter, $7075 fire button latch, $70AB a
+; 3-2-1-0 frame counter, $70A9 the death timer. JOE_TILES reads the tiles
+; around his legs sprite into $7057-$705C: the row at his body (left, middle,
+; right), then the row at his feet.
 ; =============================================================================
-DELAY_LOOP_8EB0:
-    CALL    SUB_8308                        ; CALL SUB_8308: render current room tiles to VRAM
-    LD      A, ($71A7)                      ; A = ($71A7) player speed (0-8)
-    CP      $08                             ; CP $08: is speed at maximum?
-    JR      C, LOC_8EBC                     ; JR C, LOC_8EBC: if below max, skip clamp
-    LD      A, $08                          ; A = $08 (clamp speed to 8)
+MOVE_TASK:
+    CALL    JOE_SPRITES                     ; his sprite patterns, and footsteps
+    LD      A, ($70AB)                      ; count $70AB 3, 2, 1, 0, 3, ...
+    DEC     A
+    JP      P, LOC_88DD
+    LD      A, $03
 
-LOC_8EBC:
-    LD      B, $06                          ; B = $06 (6 animation frames per speed unit)
-    LD      C, A                            ; C = A (save clamped speed)
+LOC_88DD:
+    LD      ($70AB), A
+    CALL    MOVE_ENEMIES                    ; the enemies
+    CALL    READ_CONTROLLERS
+    LD      A, ($705F)                      ; walking into the pyramid at the start of a level:
+    BIT     2, A                            ; hold the joystick down, and right or left towards
+    JR      Z, MOVE_TASK_STATE
+    LD      A, ($7301)                      ; the middle of the screen
+    CP      $80
+    LD      A, $86                          ; bit 7 + down + right
+    JR      C, LOC_88F8
+    LD      A, $8C                          ; bit 7 + down + left
+
+LOC_88F8:
+    LD      ($73EE), A
+
+MOVE_TASK_STATE:
+    CALL    JOE_TILES                       ; the tiles around him
+    LD      HL, JOE_STATES                  ; run the handler for his state
+    LD      A, ($7079)
+    SLA     A
+    CALL    TABLE_BYTE
+    LD      E, (HL)
+    INC     HL
+    LD      D, (HL)
+    EX      DE, HL
+    CALL    CALL_HL
+    JP      JOE_MOVE                        ; apply the velocity, leave the room
+
+; Joe's state handlers, by $7079.
+JOE_STATES:
+    DW      JOE_STANDING                    ; 0 standing
+    DW      JOE_STANDING                    ; 1 walking
+    DW      JOE_JUMPING                     ; 2 jumping
+    DW      JOE_LADDER                      ; 3 on a ladder
+    DW      JOE_ROPE                        ; 4 on a rope
+    DW      JOE_FALLING                     ; 5 sliding down a pole
+    DW      JOE_FALLING                     ; 6 falling
+    DW      JOE_LET_GO                      ; 7 (unused) letting go
+    DW      JOE_ZAPPED                      ; 8 zapped: touched a barrier, an enemy or a creature
+    DW      JOE_DEAD                        ; 9 dead from a fall
+    DW      JOE_BURNT                       ; 10 burnt
+
+; JOE_STANDING ($8929): states 0 and 1. Climb onto a ladder or rope, jump,
+; walk, or fall off the edge.
+JOE_STANDING:
+    LD      A, ($705B)                      ; bricks at his feet and his body: shove him out
+    CP      $08
+    JR      NZ, JOE_STANDING_FIRE
+    LD      A, ($7058)
+    CP      $08
+    JR      NZ, JOE_STANDING_FIRE
+    LD      BC, $F800                       ; 8 pixels left if the tile left of his body is
+    LD      A, ($7057)                      ; empty, else right
+    CP      $00
+    JR      Z, LOC_8943
+    LD      B, $08
+
+LOC_8943:
+    JP      MOVE_JOE                        ; move him by B, C
+
+JOE_STANDING_FIRE:
+    LD      A, ($7057)                      ; fire beside him: burnt
+    CALL    IS_HAZARD
+    JR      NZ, JOE_STANDING_MOVE
+    JP      JOE_BURN
+
+JOE_STANDING_MOVE:
+    LD      A, ($73EE)                      ; count steps while he moves
+    AND     $0F
+    CALL    STEP_IF_MOVING
+    XOR     A
+    LD      ($7077), A
+    LD      BC, $0000
+    LD      A, ($73EE)                      ; up, and a ladder at his body: climb
+    AND     $01
+    JR      Z, JOE_STANDING_DOWN
+    LD      HL, $7058
+    LD      A, (HL)
+    INC     HL
+    CP      $88
+    JR      NZ, JOE_STANDING_DOWN
+    LD      A, (HL)
+    CP      $89
+    JR      NZ, JOE_STANDING_DOWN
+    CALL    ALIGN_LADDER                    ; snap onto the ladder
+    LD      C, $FC                          ; DY -4
+    JR      JOE_TO_LADDER
+
+JOE_LADDER_DOWN:
+    CALL    ALIGN_LADDER                    ; down onto the ladder below: snap onto it
+    LD      C, $02                          ; DY 2, and the climb-down sequence
+    LD      A, $08
+    LD      ($70B2), A
+
+JOE_TO_LADDER:
+    LD      A, $03                          ; state 3
+
+; Set state A, velocity B (DX), C (DY); B also becomes his facing if
+; it isn't 0. A conveyor under his feet pushes him every other frame.
+JOE_COMMIT:
+    PUSH    AF
+    LD      A, B
+    CP      $00
+    JR      Z, LOC_8991
+    LD      ($7078), A
+
+LOC_8991:
+    POP     AF
+
+JOE_SET_STATE:
+    LD      ($7079), A
+    CP      $02                             ; not while jumping
+    JR      Z, LOC_89A3
+    LD      A, ($70AB)                      ; every other frame
+    AND     $01
+    CP      $01
+    CALL    NZ, CONVEYOR
+
+LOC_89A3:
+    LD      HL, $7076
+    LD      (HL), B
+    INC     HL
+    LD      (HL), C
+    RET
+
+JOE_STANDING_DOWN:
+    LD      A, ($73EE)                      ; down: onto a ladder's top in the floor below,
+    AND     $04
+    JR      Z, JOE_STANDING_LEFT
+    LD      HL, $705B                       ; the middle foot tile, or the right one beside it
+    LD      A, (HL)
+    INC     HL
+    CP      $10
+    JR      NZ, LOC_89BF
+    LD      A, (HL)
+    CP      $11
+    JR      Z, JOE_LADDER_DOWN
+
+LOC_89BF:
+    CP      $C4                             ; or the top of a rope
+    JR      NZ, JOE_STANDING_LEFT
+    CALL    ALIGN_ROPE                      ; snap onto the rope; C (4 or 12) is left as his DY,
+    CALL    JOE_NOT_MOVING                  ; so he drops a little onto it
+    LD      A, $04                          ; state 4
+    JR      LOC_89F3
+
+JOE_STANDING_LEFT:
+    LD      A, ($73EE)                      ; left: DX -2
+    AND     $08
+    JR      Z, JOE_STANDING_RIGHT
+    LD      BC, $FE00
+    CALL    JUMP_PRESSED
+    JR      NC, JOE_WALK
+
+; Jump: DX B, DY -1 to start, and 18 frames of the arc at $93AE.
+JOE_JUMP:
+    LD      A, $07                          ; sound effect 7: jump
+    CALL    PLAY_SOUND
+    LD      A, ($7300)                      ; where the jump began
+    LD      ($707C), A
+    LD      A, $12                          ; frames of the arc
+    LD      ($7072), A
+    LD      HL, JUMP_ARC                    ; (unused)
+    LD      C, $FF
+    LD      A, $02                          ; state 2
+
+LOC_89F3:
+    JP      JOE_COMMIT
+
+JOE_WALK:
+    PUSH    BC                              ; a floor under his feet: state 1, walking
+    CALL    JOE_ON_FLOOR
+    POP     BC
+    JR      C, JOE_FALL
+    LD      A, $01
+
+LOC_89FF:
+    JR      LOC_89F3
+
+; Start falling from where he is.
+JOE_FALL:
+    LD      A, ($7300)
+    LD      ($707C), A
+    LD      A, $06                          ; state 6
+    JR      LOC_89FF
+
+JOE_STANDING_RIGHT:
+    LD      A, ($73EE)                      ; right: DX 2
+    AND     $02
+    JR      Z, JOE_STANDING_STILL
+    LD      BC, $0200
+    CALL    JUMP_PRESSED
+    JR      C, JOE_JUMP
+    JR      JOE_WALK
+
+JOE_STANDING_STILL:
+    LD      BC, $0000                       ; neither: jump, stand or fall
+    CALL    JUMP_PRESSED
+    JR      C, JOE_JUMP
+    PUSH    BC
+    CALL    JOE_ON_FLOOR
+    POP     BC
+    JP      NC, JOE_STAND                   ; state 0
+    JP      JOE_FALL
+
+; JOE_JUMPING ($8A2F): state 2. DY from the arc, read backwards by the jump
+; counter, then 4 once it runs out. Catch a rope or pole he jumps into;
+; land once his last DY wasn't upwards.
+JOE_JUMPING:
+    LD      D, $04
+    LD      HL, $7072
+    LD      A, (HL)
+    CP      $00
+    JR      Z, LOC_8A42
+    DEC     (HL)
+    LD      A, (HL)
+    LD      HL, JUMP_ARC
+    CALL    TABLE_BYTE
+    LD      D, (HL)
+
+LOC_8A42:
+    LD      A, ($7076)                      ; DX as before (his facing, if not 0)
+    CP      $00
+    JR      Z, LOC_8A4C
+    LD      ($7078), A
+
+LOC_8A4C:
+    LD      B, A
+    LD      C, D
+    LD      A, ($7058)                      ; a rope at his body
+    CP      $90
+    JP      Z, JOE_GRAB_ROPE
+    CP      $95                             ; a pole at his body, unless he stands on a brick
+    JR      NZ, JOE_JUMPING_WALL
+    LD      A, ($705B)
+    CP      $08
+    JR      Z, JOE_JUMPING_WALL
+    JP      JOE_GRAB_POLE
+
+; A brick at his body on the side he isn't going: DX 0. (No effect: the
+; state is committed with B.)
+JOE_JUMPING_WALL:
+    LD      A, ($7076)
+    BIT     7, A
+    LD      A, ($7059)
+    JR      NZ, LOC_8A71
+    LD      A, ($7057)
+
+LOC_8A71:
+    CP      $08
+    JR      NZ, JOE_JUMPING_RISING
+    XOR     A
+    LD      ($7076), A
+
+JOE_JUMPING_RISING:
+    LD      A, ($7077)                      ; still rising as of last frame: keep jumping
+    BIT     7, A
+    JP      NZ, JOE_KEEP_STATE
+    JR      JOE_FALLING_FLOOR               ; then as falling
+
+; JOE_FALLING ($8A83): states 5 and 6, and a jump coming down. Land on a
+; floor (snapped to it), or die there: on fire, or from a fall of 28 lines
+; or more (not from a pole). In the air, catch a rope or pole.
+JOE_FALLING:
+    LD      BC, $0004                       ; DY 4
+
+JOE_FALLING_FLOOR:
+    PUSH    BC
+    CALL    JOE_ON_FLOOR                    ; no floor under his feet
+    POP     BC
+    JR      C, JOE_IN_AIR
+    CP      $D2                             ; fire
+    JR      NZ, JOE_LAND
+
+JOE_BURN:
+    LD      A, $05                          ; sound effect 5: death
+    CALL    PLAY_SOUND
+    LD      A, $0A                          ; state 10
+    JR      JOE_DIE
+
+JOE_LAND:
+    LD      C, $00                          ; snap: DY up to where his Y is 4 or 12 (mod 16)
+    LD      A, ($7300)
+
+LOC_8A9F:
+    AND     $0F
+    CP      $04
+    JR      Z, LOC_8AAD
+    CP      $0C
+    JR      Z, LOC_8AAD
+    DEC     A
+    DEC     C
+    JR      LOC_8A9F
+
+LOC_8AAD:
+    PUSH    BC
+    LD      A, $04                          ; sound effect 4: landing
+    CALL    PLAY_SOUND
+    LD      A, ($71A8)                      ; landing in column 10 ends the walk into the
+    CP      $0A
+    JR      NZ, JOE_LAND_HEIGHT             ; pyramid
+    LD      A, ($705F)
+    BIT     2, A
+    JR      Z, JOE_LAND_HEIGHT
+    RES     2, A
+    LD      ($705F), A
+    CALL    SAVE_JOE                        ; he respawns from here
+
+JOE_LAND_HEIGHT:
+    LD      A, ($707C)                      ; how far he fell
+    LD      B, A
+    LD      A, ($7300)
+    CP      B
+    JR      C, JOE_LANDED_UP
+    SUB     B
+    POP     BC
+    CP      $1C                             ; less than 28 lines
+    JR      C, JOE_LANDED
+    LD      A, ($7079)                      ; or off a pole: he's fine
+    CP      $05
+    JR      Z, JOE_LANDED
+    LD      A, ($7300)                      ; the death pose: swap his two sprites' rows
+    LD      B, A
+    LD      A, ($7304)
+    LD      ($7300), A
+    LD      A, B
+    LD      ($7304), A
+    LD      A, $09                          ; state 9
+
+; Die: state A, a life gone, the death timer $70.
+JOE_DIE:
+    PUSH    AF
+    CALL    LOSE_LIFE
+    LD      A, $70
+    LD      ($70A9), A
+    POP     AF
+    LD      BC, $0000
+    JP      JOE_COMMIT
+
+JOE_LANDED_UP:
+    POP     BC                              ; below where he started
+
+JOE_LANDED:
+    LD      A, $01                          ; state 1, DY the snap
+    JP      JOE_SET_STATE
+
+JOE_IN_AIR:
+    LD      A, ($705B)                      ; a rope at his feet
+    CP      $90
+    JP      NZ, JOE_IN_AIR_POLE
+
+JOE_GRAB_ROPE:
+    CALL    CAN_GRAB                        ; only on a sideways jump past its first 3 frames
+    PUSH    BC
+    CALL    ALIGN_ROPE                      ; snap onto it
+    POP     BC
+    LD      A, ($705B)
+    JR      NC, JOE_IN_AIR_POLE             ; (always carries)
+    LD      A, $04                          ; state 4, still
+    JP      LOC_8C31
+
+; ALIGN_LADDER ($8B20), ALIGN_ROPE ($8B27): snap Joe's X onto a ladder
+; (to 7 or 15, mod 16) or a rope or pole (4 or 12). The offset is left in C.
+ALIGN_LADDER:
+    PUSH    HL
+    LD      C, $0F
+    LD      E, $07
+    JR      ALIGN_JOE
+
+ALIGN_ROPE:
+    PUSH    HL
+    LD      C, $0C
+    LD      E, $04
+
+ALIGN_JOE:
+    LD      HL, $7301
+    LD      A, (HL)
+    AND     $0F
+    CP      $08
+    JR      NC, LOC_8B37
+    LD      C, E
+
+LOC_8B37:
+    LD      A, (HL)
+    AND     $F0
+    ADD     A, C
+    LD      (HL), A
+    INC     HL
+    INC     HL
+    INC     HL
+    INC     HL
+    LD      (HL), A
+    POP     HL
+    SCF
+    RET
+
+; CAN_GRAB ($8B44): return if Joe is jumping sideways past the arc's first 3
+; frames; otherwise drop the caller and carry on in the same state.
+CAN_GRAB:
+    LD      A, ($7076)
+    CP      $00
+    JR      Z, CAN_GRAB_NOT
+    LD      A, ($7072)
+    CP      $0F
+    JR      NC, CAN_GRAB_NOT
+    RET
+
+CAN_GRAB_NOT:
+    POP     AF
+
+JOE_KEEP_STATE_JP:
+    JP      JOE_KEEP_STATE
+
+JOE_IN_AIR_POLE:
+    CP      $95                             ; a pole at his feet?
+    JR      NZ, JOE_KEEP_STATE_JP
+
+JOE_GRAB_POLE:
+    CALL    CAN_GRAB
+    CALL    ALIGN_ROPE
+    LD      BC, $0004                       ; DY 4
+    LD      A, $06                          ; sound effect 6: pole
+    CALL    PLAY_SOUND
+    LD      A, $05                          ; state 5
+    JP      LOC_8C3C
+
+; JOE_BURNT ($8B6E): state 10. His ghost rises: one grey sprite.
+JOE_BURNT:
+    LD      HL, $7300                       ; Y - 1
+    DEC     (HL)
+    INC     HL
+    INC     HL
+    LD      (HL), $78                       ; the ghost, grey
+    INC     HL
+    LD      (HL), $0E
+    XOR     A                               ; hide the second sprite
+    LD      ($7307), A
+    JR      JOE_DEAD
+
+; JOE_ZAPPED ($8B7F): state 8. Flash, following the death timer.
+JOE_ZAPPED:
+    LD      A, ($70A9)
+    BIT     2, A
+    JR      NZ, JOE_DEAD
+    AND     $03
+    LD      HL, JOE_ZAPPED_FRAMES
+    CALL    SET_JOE_FRAME
+
+; JOE_DEAD ($8B8E): count the death timer down. When it goes negative,
+; game over if no life is left; otherwise respawn as he entered the room,
+; and have the frame interrupt reload the room.
+JOE_DEAD:
+    LD      HL, $70A9
+    DEC     (HL)
+    JP      P, JOE_STILL                    ; not yet
+    LD      HL, $7049                       ; lives (his own included)
+    LD      A, (HL)
+    CP      $00
+    JR      NZ, JOE_RESPAWN
+
+GAME_OVER:
+    LD      (HL), $06                       ; back to 6
+    XOR     A                               ; hide Joe
+    LD      ($7303), A
+    LD      ($7307), A
+    CALL    TURN_OFF_SOUND
+    LD      HL, $0000                       ; no points to add
+    LD      ($70BD), HL
+    LD      ($70BE), HL
+    LD      BC, $0109                       ; GAME OVER: row 11 column 12
+    LD      HL, GAME_OVER_TEXT
+    LD      DE, $016C
+    CALL    TILE_ROWS
+
+GAME_OVER_WAIT:
+    CALL    READ_CONTROLLERS                ; wait for fire, with no direction held
+    LD      A, ($73EE)
+    CP      $C0
+    JR      NZ, GAME_OVER_WAIT
+
+; Once per game ($705F bit 0); after that only the console's reset
+; gets out.
+    LD      HL, $705F
+    BIT     0, (HL)
+    JR      NZ, GAME_OVER_WAIT
+    SET     0, (HL)
+
+GAME_OVER_LEVEL_1:
+    LD      A, ($71A6)                      ; and only on level 1: elsewhere, forever
+    CP      $01
+    JR      NZ, GAME_OVER_LEVEL_1
+    LD      HL, $0000                       ; the score back to 0
+    LD      ($7017), HL
+    LD      ($7018), HL
+
+JOE_RESPAWN:
+    LD      HL, $7303                       ; his colours: red, yellow
+    LD      (HL), $06
+    LD      L, $07
+    LD      (HL), $0B
+    LD      HL, $707D                       ; his state as he entered the room ($8E7E)
+    LD      A, (HL)
+    LD      ($7077), A
+    INC     HL
+    LD      A, (HL)
+    LD      ($7076), A
+    INC     HL
+    LD      A, (HL)
+    LD      ($7079), A
+    INC     HL
+    LD      A, (HL)
+    LD      ($7078), A
+    INC     HL
+    LD      A, (HL)
+    LD      ($7075), A
+    LD      DE, $7300                       ; and his sprites
+    LD      HL, $704B
+    LD      BC, $0008
+    LDIR
+    CALL    JOE_TILES
+
+; Have the frame interrupt load the room (LOAD_ROOM_NOW), and wait.
+RELOAD_ROOM:
+    PUSH    HL
+    LD      HL, $70B1
+    SET     3, (HL)
+
+RELOAD_ROOM_WAIT:
+    BIT     3, (HL)
+    JR      NZ, RELOAD_ROOM_WAIT
+    POP     HL
+    RET
+
+; READ_CONTROLLERS ($8C1F): the joystick into $73EE, with the right fire
+; button merged in: bits 0-3 up, right, down, left; bit 6 fire; bit 7 set.
+READ_CONTROLLERS:
+    CALL    CONTROLLER_SCAN
+    LD      HL, $73F0                       ; keypad 1: the right button is bit 6
+    LD      A, (HL)
+    AND     $C0
+    DEC     HL
+    DEC     HL
+    OR      (HL)
+    LD      ($73EE), A
+    RET
+
+JOE_STAND:
+    LD      A, $00                          ; state 0, still
+
+LOC_8C31:
+    LD      BC, $0000
+    JR      LOC_8C3C
+
+JOE_STILL:
+    LD      BC, $0000                       ; still, same state
+
+JOE_KEEP_STATE:
+    LD      A, ($7079)                      ; same state, velocity B, C
+
+LOC_8C3C:
+    JP      JOE_SET_STATE
+
+; STEP_IF_CLIMBING ($8C3F), STEP_IF_MOVING ($8C44): count Joe's steps (for
+; footsteps and the walking frames) while up or down (A: the joystick's
+; bits) is held. $705F bit 6 is set while he isn't moving, so the climbing
+; frame stays.
+STEP_IF_CLIMBING:
+    LD      A, ($73EE)
+    AND     $05
+
+STEP_IF_MOVING:
+    CP      $00
+    JR      Z, JOE_NOT_MOVING
+    PUSH    BC
+    CALL    STEP_COUNT
+    POP     BC
+    LD      HL, $705F
+    RES     6, (HL)
+    RET
+
+JOE_NOT_MOVING:
+    LD      HL, $705F
+    SET     6, (HL)
+    RET
+
+; JOE_LADDER ($8C59): state 3. Climb up or down; let go onto a floor.
+; Stepping down onto the ladder from above ($70B2 counting down from 8):
+; a pause, a pause, 2 lines down, 2 lines down, a pause, ...
+JOE_LADDER:
+    LD      A, ($70B2)
+    LD      B, A
+    AND     $0F
+    CP      $00
+    JR      Z, JOE_LADDER_CLIMB
+    DEC     B
+    LD      A, B
+    LD      ($70B2), A
+    BIT     1, B                            ; pause
+    JR      NZ, JOE_STILL
+    LD      BC, $0002                       ; down 2...
+    BIT     7, A                            ; (up 2 if bit 7)
+    JR      Z, JOE_LADDER_COMMIT
+    LD      BC, $00FE
+
+JOE_LADDER_COMMIT:
+    JP      JOE_KEEP_STATE
+
+JOE_LADDER_CLIMB:
+    BIT     7, B
+    LD      BC, $0000
+    JP      NZ, JOE_FALL
+    CALL    STEP_IF_CLIMBING
+    LD      A, ($7059)                      ; (unused)
+
+JOE_CLIMB_FLOOR:
+    LD      A, ($705B)                      ; a floor at his feet: let go, and land
+    CALL    IS_FLOOR
+    JP      NC, JOE_FALL
+    LD      A, ($73EE)                      ; down: DY 1
+    AND     $04
+    JR      Z, JOE_CLIMB_UP
+    LD      BC, $0001
+    JR      JOE_LADDER_COMMIT
+
+; On a rope, above its top: in the treasure room up holds on, anything
+; else carries on below; elsewhere up lets go.
+JOE_ROPE_ABOVE:
+    LD      A, ($705F)
+    BIT     5, A
+    JR      Z, LOC_8CAD
+    LD      A, ($73EE)
+    AND     $01
+    JR      NZ, JOE_HOLD
+    JP      JOE_ROPE_BOTTOM
+
+LOC_8CAD:
+    LD      A, ($73EE)
+    AND     $01
+    JR      Z, JOE_CLIMB_UP
+    JR      JOE_LET_GO
+
+; Unreachable.
+    LD      A, ($73EE)
+    AND     $01
+    JR      Z, JOE_CLIMB_UP
+    LD      A, $84
+    LD      ($70B2), A
+
+JOE_HOLD:
+    JP      JOE_STILL
+
+; State 7, and letting go of a rope: fall.
+JOE_LET_GO:
+    LD      BC, $0000
+    LD      A, ($7300)
+    LD      ($707C), A
+    JP      JOE_FALL
+
+JOE_CLIMB_UP:
+    LD      A, ($73EE)                      ; up: DY -1,
+    AND     $01
+    JR      Z, JOE_CLIMB_DOWN
+    LD      BC, $00FF
+    LD      A, ($7079)                      ; on a rope every other frame
+    CP      $04
+    JR      NZ, JOE_CLIMB_COMMIT
+    LD      A, ($70AB)
+    AND     $01
+    CP      $00
+    JR      NZ, JOE_CLIMB_COMMIT
+    LD      C, $00
+
+JOE_CLIMB_COMMIT:
+    JP      JOE_KEEP_STATE
+
+JOE_CLIMB_DOWN:
+    LD      A, ($73EE)                      ; down: DY 1 if there's a floor to go down to
+    AND     $04
+    LD      BC, $0001
+    JR      Z, JOE_HOLD
+    CALL    JOE_ON_FLOOR
+    JR      NC, JOE_CLIMB_COMMIT
+    JP      JOE_FALL
+
+; JOE_ROPE ($8D02): state 4. Jump off sideways with fire; climb up (half
+; speed) or slide down; let go at the bottom, or at a floor.
+JOE_ROPE:
+    CALL    STEP_IF_CLIMBING
+    CALL    JUMP_PRESSED
+    JR      NC, JOE_ROPE_HOLD
+    LD      A, ($73EE)                      ; fire with left: DX -2
+    AND     $08
+    JR      Z, JOE_ROPE_RIGHT
+    LD      BC, $FE00
+
+; In the treasure room once its time is up: jump at DX +-4, and set up
+; a new screen ($705F bit 3).
+JOE_ROPE_JUMP:
+    LD      A, ($705F)
+    BIT     5, A
+    JR      Z, JOE_ROPE_JUMP_GO
+    LD      A, ($70AC)
+    CP      $01
+    JR      NZ, JOE_ROPE_JUMP_GO
+    LD      HL, $705F
+    SET     3, (HL)
+    BIT     7, B
+    LD      B, $04
+    JR      Z, JOE_ROPE_JUMP_GO
+    LD      B, $FC
+
+JOE_ROPE_JUMP_GO:
+    JP      JOE_JUMP
+
+JOE_ROPE_RIGHT:
+    LD      A, ($73EE)                      ; fire with right: DX 2
+    AND     $02
+    JR      Z, JOE_ROPE_HOLD
+    LD      BC, $0200
+    JR      JOE_ROPE_JUMP
+
+; The treasure room has no dropping off: up climbs at DY -2.
+JOE_ROPE_TREASURE:
+    LD      A, ($73EE)
+    AND     $01
+    JR      Z, JOE_ROPE_COMMIT
+    LD      C, $FE
+
+JOE_ROPE_COMMIT:
+    JP      JOE_KEEP_STATE
+
+JOE_ROPE_HOLD:
+    LD      BC, $0000
+    LD      A, ($7058)                      ; nothing at his body: above the rope's top
+    CP      $00
+    JP      Z, JOE_ROPE_ABOVE
+
+; Nothing to hold below him (empty, or a jewel in the treasure room):
+; off the bottom. Else as on a ladder.
+JOE_ROPE_BOTTOM:
+    LD      A, ($705B)
+    CP      $D8
+    JR      Z, JOE_ROPE_DROP
+    CP      $98
+    JR      Z, JOE_ROPE_DROP
+    CP      $00
+    JP      NZ, JOE_CLIMB_FLOOR
+
+JOE_ROPE_DROP:
+    LD      A, ($705F)
+    BIT     5, A
+    JP      NZ, JOE_ROPE_TREASURE
+    LD      BC, $0000
+    LD      A, $A0                          ; drop off; the fall start makes it harmless
+    LD      ($707C), A
+    LD      A, ($71A5)                      ; (the flags are still BIT 5's: never taken)
+    JP      NZ, JOE_FALL
+    LD      A, $06                          ; state 6
+    JP      JOE_COMMIT
+
+; APPLY_VELOCITY ($8D80): move Joe by B (DX, after any conveyor push) and
+; C (DY), with E = DX as stored. A wall at body height in the direction
+; he's going stops him sideways: this frame, and for good unless he's
+; rising. A lit barrier at his body zaps him.
+APPLY_VELOCITY:
+    LD      A, ($7057)                      ; the tile ahead: left...
+    BIT     7, B
+    JR      NZ, LOC_8D8F
+    LD      HL, $71B0                       ; ...or right
+    INC     (HL)
+    INC     (HL)
+    LD      A, ($7059)
+
+LOC_8D8F:
+    CALL    IS_WALL                         ; a wall?
+    JR      Z, JOE_AT_WALL
+    LD      A, ($7058)                      ; a barrier, lit
+    CP      $E0
+    JR      NZ, JOE_MOVE_E
+    LD      A, ($7000)
+    BIT     5, A
+    JR      NZ, JOE_MOVE_E
+
+; Zap Joe, unless he's zapped already (a fall death or burning doesn't
+; count: they can be zapped again). C, E: his velocity.
+JOE_ZAP:
+    LD      A, ($7079)
+    CP      $08
+    JR      Z, JOE_MOVE_E
+    LD      A, $05                          ; sound effect 5: death
+    CALL    PLAY_SOUND
+    LD      A, $08                          ; state 8
+    LD      ($7079), A
+    LD      A, $70                          ; the death timer
+    LD      ($70A9), A
+    LD      A, $D4                          ; the zapped legs pattern
+    LD      ($7306), A
+    CALL    LOSE_LIFE
+    JR      JOE_MOVE_E
+
+; LOSE_LIFE ($8DC2): a life gone, as each death happens.
+LOSE_LIFE:
+    PUSH    HL
+    LD      HL, $7049
+    DEC     (HL)
+    POP     HL
+    RET
+
+JOE_AT_WALL:
+    BIT     7, C                            ; not rising: DX 0 for good
+    JR      NZ, LOC_8DD1
+    XOR     A
+    LD      ($7076), A
+
+LOC_8DD1:
+    LD      E, $00                          ; no X move this frame
+
+JOE_MOVE_E:
+    LD      B, E
+
+; MOVE_JOE ($8DD4): move both of Joe's sprites by B (X), C (Y).
+MOVE_JOE:
+    LD      HL, $7300
+    LD      A, (HL)
+    ADD     A, C
+    LD      (HL), A
+    INC     HL
+    LD      A, (HL)
+    ADD     A, B
+    LD      (HL), A
+    LD      L, $04
+    LD      A, (HL)
+    ADD     A, C
+    LD      (HL), A
+    INC     HL
+    LD      A, (HL)
+    ADD     A, B
+    LD      (HL), A
+    RET
+
+; =============================================================================
+; JOE_MOVE ($8DE8): after Joe's state handler, apply his velocity, then see
+; whether he has left the screen: sideways by X, up or down by his legs
+; sprite's Y. Leaving moves him to the opposite edge and changes the room
+; ($71A7 row, $71A8 column).
+; =============================================================================
+JOE_MOVE:
+    LD      HL, $7076
+    LD      E, (HL)
+    INC     HL
+    LD      C, (HL)
+    CALL    APPLY_VELOCITY                  ; A: his new X
+    CP      $04
+    JR      C, LOC_8DFA
+    CP      $F0
+    JP      C, JOE_EXIT_VERTICAL            ; not at a side: up or down?
+
+LOC_8DFA:
+    LD      HL, $71A8                       ; a side: column + 1,
+    INC     (HL)
+    BIT     7, B                            ; or - 1 going left
+    JR      Z, JOE_EXIT_RIGHT
+    DEC     (HL)
+    DEC     (HL)
+    LD      BC, $EC00                       ; X - 20
+    JR      CHANGE_ROOM
+
+JOE_EXIT_RIGHT:
+    LD      BC, $1600                       ; X + 22
+
+; CHANGE_ROOM ($8E0C): Joe has left the screen; B, C move him to where he
+; comes in. Below the pyramid's bottom row (row 9 and down), sliding down a
+; pole starts the next level; anything else is the treasure room. Otherwise
+; the frame interrupt loads the new room.
+CHANGE_ROOM:
+    PUSH    AF
+    LD      A, ($71A7)
+    CP      $09
+    JR      C, CHANGE_ROOM_LOAD
+    LD      A, $01                          ; sound effect 1: leaving the bottom row
+    CALL    PLAY_SOUND
+    LD      A, ($7079)                      ; on a pole: the next level
+    CP      $05
+    JR      NZ, ENTER_TREASURE
+    XOR     A                               ; the entrance hall: row 0, column 8
+    LD      ($71A7), A
+    LD      A, $08
+    LD      ($71A8), A
+    LD      A, ($705F)                      ; walk Joe into the pyramid (bit 2), and not in
+    RES     3, A                            ; the treasure room (bits 3, 5)
+    RES     5, A
+    SET     2, A
+    LD      ($705F), A
+    PUSH    BC
+    PUSH    HL
+    PUSH    DE
+    LD      HL, $71A6                       ; the level, up to 9
+    LD      A, (HL)
+    CP      $09
+    JR      NC, NEXT_LEVEL_RESET
+    INC     (HL)
+
+NEXT_LEVEL_RESET:
+    LD      HL, $70C0                       ; every room as new: clear the "gone" bitmap
+    LD      BC, $00C6                       ; ($70C0-$7186: room 99's second byte is missed)
+    CALL    CLEAR_RAM
+    CALL    VRAM_LOCK
+    LD      BC, $0700                       ; register 7 = 0: black backdrop
+    CALL    WRITE_REGISTER
+    CALL    VRAM_UNLOCK
+    POP     DE
+    POP     HL
+    POP     BC
+    JR      CHANGE_ROOM_LOAD
+
+ENTER_TREASURE:
+    LD      A, ($705F)                      ; the treasure room: set up a new screen
+    BIT     5, A
+    SET     3, A                            ; ($705F bit 3)
+    SET     5, A
+    LD      ($705F), A
+    JR      NZ, ENTER_TREASURE_MOVE         ; already in it?
+    LD      A, $F0                          ; no: start its timer (240 contact checks)
+    LD      ($70AC), A
+    CALL    EMPTY_INVENTORY                 ; and empty the inventory
+
+ENTER_TREASURE_MOVE:
+    POP     AF
+    CALL    MOVE_JOE
+    JR      SAVE_JOE
+
+CHANGE_ROOM_LOAD:
+    POP     AF
+    CALL    MOVE_JOE
+    CALL    RELOAD_ROOM                     ; load the room
+
+; SAVE_JOE ($8E7E): remember Joe as he is, to respawn him there: his
+; velocity, state, facing and fire latch at $707D-$7081, his sprites at
+; $704B-$7052. Then have the frame interrupt recolour the room (RECOLOUR).
+SAVE_JOE:
+    LD      HL, $707D
+    LD      A, ($7077)
+    LD      (HL), A
+    INC     HL
+    LD      A, ($7076)
+    LD      (HL), A
+    INC     HL
+    LD      A, ($7079)
+    LD      (HL), A
+    INC     HL
+    LD      A, ($7078)
+    LD      (HL), A
+    LD      A, ($7075)
+    INC     HL
+    LD      (HL), A
+    LD      HL, $7300                       ; a fall starts here too
+    LD      A, (HL)
+    LD      ($707C), A
+    LD      DE, $704B
+    LD      BC, $0008
+    LDIR
+
+RECOLOUR:
+    PUSH    HL                              ; run ROOM_COLOURS on the next frame interrupt
+    LD      HL, $70B1
+    SET     4, (HL)
+    POP     HL
+    RET
+
+; ROOM_COLOURS ($8EB0): the boot colours, then the room's row's colours for
+; entries 1-7 (bricks, ladder tops in floors, the HUD digits, the fire pit's
+; flames). Deep in the pyramid (row 9 minus the level or lower) without the
+; torch, outside the treasure room, the room is dark: entries 0-2 and 16-24,
+; but 20 (the creatures), go black.
+ROOM_COLOURS:
+    CALL    LOAD_TILE_COLOURS
+    LD      A, ($71A7)                      ; row, at most 8
+    CP      $08
+    JR      C, ROOM_COLOURS_ROW
+    LD      A, $08
+
+ROOM_COLOURS_ROW:
+    LD      B, $06                          ; times 7
+    LD      C, A
 
 LOC_8EBF:
-    ADD     A, C                            ; ADD A, C: accumulate speed -> animation frame count
-    DJNZ    LOC_8EBF                        ; DJNZ LOC_8EBF: sum speed * 6 times
-    LD      HL, $93C0                       ; HL = $93C0 (tile collision lookup table)
-    CALL    TABLE_BYTE                      ; A = byte A of the table at $93C0
-    LD      DE, $0001                       ; DE = $0001 (sprite attribute write flag)
-    LD      IY, $0007                       ; IY = $0007 (sprite stride / attribute selector)
-    LD      A, $04                          ; A = $04 (VRAM block selector)
-    CALL    SUB_AE2E                        ; CALL SUB_AE2E: write sprite attribute block to VRAM
-    LD      A, ($71A6)                      ; A = ($71A6) room difficulty (0-5)
-    NEG                                     ; NEG: negate difficulty
-    ADD     A, $09                          ; ADD A,$09: max speed = 9 - difficulty
-    LD      B, A                            ; B = A (player speed cap for this room)
-    LD      A, ($71A7)                      ; A = ($71A7) current speed
-    CP      B                               ; CP B: speed vs cap
-    JR      C, LOC_8F03                     ; JR C, LOC_8F03: below cap -- no item-pickup check
-    LD      A, $53                          ; A = $53 (item type code)
-    CALL    SUB_908F                        ; CALL SUB_908F: CPIR item pickup table $71B2 (6 bytes)
-    JR      C, LOC_8F03                     ; JR C, LOC_8F03: no pickup found
-    LD      A, ($705F)                      ; A = ($705F) game mode flags
-    BIT     5, A                            ; BIT 5, A: tile-skip flag
-    JR      NZ, LOC_8F03                    ; JR NZ, LOC_8F03: tile-skip set -- skip re-render
-    LD      A, $04                          ; A = $04
-    CALL    SUB_AE00                        ; CALL SUB_AE00 ($04): re-render room tiles after pickup
-    CALL    $00AB                           ; inline data: SUB_AE00 $04 VRAM block byte 0
-    INC     BC                              ; inline data: SUB_AE00 $04 VRAM block byte 1
-    CALL    $10AB                           ; inline data: SUB_AE00 $04 VRAM block byte 2
-    INC     B                               ; inline data: SUB_AE00 $04 VRAM block byte 3
-    CALL    $15AB                           ; inline data: SUB_AE00 $04 VRAM block byte 4
-    INC     B                               ; inline data: SUB_AE00 $04 VRAM block byte 5
-    NOP                                     ; inline data: SUB_AE00 $04 VRAM block byte 6
-    NOP                                     ; inline data: SUB_AE00 $04 VRAM block byte 7
+    ADD     A, C
+    DJNZ    LOC_8EBF
+    LD      HL, ROW_COLOURS                 ; the row's entry in ROW_COLOURS
+    CALL    TABLE_BYTE
+    LD      DE, $0001                       ; entries 1-7
+    LD      IY, $0007
+    LD      A, $04
+    CALL    PUT_VRAM_LOCKED
+    LD      A, ($71A6)                      ; 9 - level
+    NEG
+    ADD     A, $09
+    LD      B, A
+    LD      A, ($71A7)
+    CP      B
+    JR      C, ROOM_COLOURS_DONE
+    LD      A, $53                          ; the torch?
+    CALL    HAS_ITEM
+    JR      C, ROOM_COLOURS_DONE
+    LD      A, ($705F)
+    BIT     5, A
+    JR      NZ, ROOM_COLOURS_DONE
+    LD      A, $04                          ; table 4: tile colours, black
+    CALL    LOADER
+    DW      BLACK                           ; entries 0-2: tiles $00-$17
+    DB      $00, 3
+    DW      BLACK                           ; entries 16-19: tiles $80-$9F
+    DB      $10, 4
+    DW      BLACK                           ; entries 21-24: tiles $A8-$C7
+    DB      $15, 4
+    DB      $00, $00                        ; end
 
-LOC_8F03:
-    RET                                     ; RET: return from subroutine (LOC_8F03)
-    DB      $21, $A7, $71, $3A, $5F, $70, $CB, $6F ; inline Z80: LD HL,($71A7) / LD A,($705F) / BIT 5 ...
-    DB      $C2, $0C, $8E, $35, $C3, $0C, $8E, $21 ; inline Z80: JP NZ $8E0C / DEC (HL) / JP $8E0C ...
-    DB      $A7, $71, $3A, $5F, $70, $CB, $57, $28 ; inline Z80: LD HL,($71A7) / LD A,($705F) / BIT 2 ...
-    DB      $02, $23, $34, $34, $C3, $0C, $8E, $01 ; inline Z80: JR Z / INC HL / INC (HL) / INC (HL) ...
-    DB      $00, $00, $2B, $7E, $FE, $08, $30, $04 ; inline Z80: JP $8E0C / LD BC,$0000 / DEC HL ...
-    DB      $0E, $A4, $18, $D4, $FE, $AC, $D8, $0E ; inline Z80: CP $08 / JR NC / LD C,$A4 / JR ...
-    DB      $5C, $18, $DC, $3A, $79, $70, $FE, $08 ; inline Z80: LD C,$5C / JR / LD A,($7079) ...
-    DB      $D0, $3A, $5B, $70, $E5, $D5, $C5, $21 ; inline Z80: JP NC / LD A,($705B) / PUSH HL+DE+BC ...
-    DB      $12, $94, $01, $07, $00, $ED, $B1, $20 ; inline Z80: LD HL,$9412 / LD BC,$0007 / CPIR ...
-    DB      $0E, $79, $1E, $01, $FE, $04, $38, $02 ; inline Z80: JR NZ / LD C,A / LD A,$04 / JR C ...
-    DB      $1E, $FF, $C1, $78, $83, $47, $C5, $C1 ; inline Z80: LD C,$FF / POP BC / ADD A,B / LD B,A ...
-    DB      $D1, $E1, $C9, $3A, $79, $70, $FE, $09 ; inline Z80: CALL $9208 / JR NC / LD HL,($71B0) ...
-    DB      $C8, $21, $11, $70, $7E, $EE, $80, $77 ; inline Z80: INC (HL) / INC (HL) / LD A,($7059) ...
-    DB      $CD, $56, $91, $3A, $57, $70, $21, $78 ; inline Z80: CP $9C / JR NZ / LD D,$70 / LD A,$5D ...
-    DB      $70, $CB, $7E, $20, $08, $21, $B0, $71 ; inline Z80: CP $B7 / JR NZ / LD D,$69 / LD A,$58 ...
-    DB      $34, $34, $3A, $59, $70, $FE, $9C, $20 ; inline Z80: CP $C7 / JR NZ / LD A,$62 / LD D,$77 ...
-    DB      $06, $16, $70, $3E, $5D, $18, $12, $FE ; inline Z80: LD HL,$7084 / LD (HL),D / CALL $908F ...
-    DB      $B7, $20, $06, $16, $69, $3E, $58, $18 ; inline Z80: JR NZ / CALL $909C / LD HL,($70B0) ...
-    DB      $08, $FE, $C7, $20, $34, $3E, $62, $16 ; inline Z80: LD BC,$0060 / SCF+CCF / SBC HL,BC ...
-    DB      $77, $21, $84, $70, $72, $CD, $8F, $90 ; inline Z80: LD ($70B0) / CALL $90C8 / LD A,($7084) ...
-    DB      $20, $27, $CD, $9C, $90, $2A, $B0, $71 ; inline Z80: CALL $A3F1 / PUSH AF / LD A,$08 ...
-    DB      $01, $60, $00, $37, $3F, $ED, $42, $22 ; inline Z80: CALL $AC1A / POP AF / LD HL,$0300 ...
-    DB      $B0, $71, $CD, $C8, $90, $3A, $84, $70 ; inline Z80: CALL $A587 / RET ...
-    DB      $CD, $F1, $A3, $F5, $3E, $08, $CD, $1A ; inline Z80: CALL $56A1 / LD HL,($71B0) / INC (HL) ...
-    DB      $AC, $F1, $21, $00, $03, $CD, $87, $A5 ; inline Z80: CP $00 / CALL NZ / LD HL,$0070 / CB $DE ...
-    DB      $C9, $CD, $56, $91, $21, $B0, $71, $34 ; inline Z80: PUSH HL / CALL $90A5 / POP HL / CB $9E ...
-    DB      $3A, $58, $70, $01, $08, $00, $21, $28 ; inline Z80: LD C,$00 / LD E,$00 / JP $92A2 ...
-    DB      $94, $ED, $B1, $20, $19, $3A, $4A, $70 ; inline Z80: LD BC,$000C / LD HL,$9430 / CPIR ...
-    DB      $FE, $00, $C0, $21, $00, $70, $CB, $DE ; inline Z80: CALL $9067 / DEC HL / AND $F8 ...
-    DB      $E5, $CD, $A5, $90, $E1, $CB, $9E, $0E ; inline Z80: CP $78 / JR NZ / LD A,$58 / JR ...
-    DB      $00, $1E, $00, $C3, $A2, $8D, $01, $0C ; inline Z80: CP $68 / LD A,$62 / JR NZ / LD A,$5D ...
-    DB      $00, $21, $30, $94, $ED, $B1, $20, $3E ; inline Z80: PUSH BC / LD C,A / CALL $A56C ...
-    DB      $CD, $67, $90, $2B, $7E, $E6, $F8, $FE ; inline Z80: JR NC / PUSH AF / LD A,$02 / CALL $AC1A
-    DB      $78, $20, $04, $3E, $58, $18, $08, $FE ; inline Z80: POP AF / CALL $A8B7 / POP BC ...
-    DB      $68, $3E, $62, $20, $02, $3E, $5D, $C5 ; inline Z80: CALL $8EA8 / CALL $A8C3 / POP BC ...
-    DB      $4F, $CD, $6C, $A5, $38, $1E, $F5, $3E ; inline Z80: LD BC,$0010 / LD HL,$9418 / CPIR ...
-    DB      $02, $CD, $1A, $AC, $F1, $CD, $B7, $A8 ; inline Z80: CALL NZ / LD A,C / CP $04 / JR NC ...
-    DB      $C1, $C5, $CD, $A5, $90, $3E, $0B, $ED ; inline Z80: CALL $906D / LD A,$A0 / LD ($704A) ...
-    DB      $5B, $B0, $71, $CD, $78, $A3, $CD, $A8 ; inline Z80: CP $08 / JR NC / LD A,$44 / JR ...
-    DB      $8E, $CD, $C3, $A8, $C1, $C9, $01, $10 ; inline Z80: CP $08 / JR NC / LD A,$44 / CALL $9067 ...
-    DB      $00, $21, $18, $94, $ED, $B1, $C0, $79 ; inline Z80: JR / PUSH HL / LD HL,$5000 / JR ...
-    DB      $FE, $04, $30, $0C, $CD, $6D, $90, $3E ; inline Z80: PUSH HL / LD HL,$0100 / JR ...
-    DB      $A0, $32, $4A, $70, $3E, $8C, $18, $30 ; inline Z80: PUSH HL / LD HL,$3000 / LD ($70BD) ...
-    DB      $FE, $08, $30, $1C, $3E, $44, $CD, $67 ; inline Z80: POP HL / RET / CP $0C / JR NC ...
-    DB      $90, $18, $25, $E5, $21, $50, $00, $18 ; inline Z80: CALL $9073 / LD A,$53 / JR ...
-    DB      $0A, $E5, $21, $00, $01, $18, $04, $E5 ; inline Z80: LD A,$91 / CALL $9067 / JP $901B ...
-    DB      $21, $00, $30, $22, $BD, $70, $E1, $C9 ; inline Z80: continued (tail bytes of block)
-    DB      $FE, $0C, $30, $07, $CD, $73, $90, $3E ; inline Z80: continued
-    DB      $53, $18, $05, $3E, $91, $CD, $67, $90 ; inline Z80: continued
-    DB      $C3, $1B, $90                   ; inline Z80: end of LOC_8F03 inline data
+ROOM_COLOURS_DONE:
+    RET
 
-SUB_908F:
-    LD      HL, $71B2                       ; HL = $71B2 (item pickup table, 6 entries)
-    LD      BC, $0006                       ; BC = $0006 (scan 6 bytes)
-    CPIR                                    ; CPIR: search for A in [$71B2..$71B7]
-    SCF                                     ; SCF: set carry (found)
-    RET     Z                               ; RET Z: return carry set if match found
-    SCF                                     ; SCF
-    CCF                                     ; CCF: clear carry (not found)
-    RET                                     ; RET
+; EXIT_UP ($8F04), EXIT_DOWN ($8F13): the row above or below. In the treasure
+; room going up stays in the same row; during the walk into the pyramid
+; going down adds 2 to the column instead (the entrance hall's pole leads to
+; room 2).
+EXIT_UP:
+    LD      HL, $71A7
+    LD      A, ($705F)
+    BIT     5, A
+    JP      NZ, CHANGE_ROOM
+    DEC     (HL)
+    JP      CHANGE_ROOM
 
-SUB_909C:
-    PUSH    HL                              ; PUSH HL
-    POP     DE                              ; POP DE (DE = HL -- source address)
-    DEC     DE                              ; DEC DE (DE = HL-1 -- dest one slot before source)
-    LDIR                                    ; LDIR: shift item table left by one slot (remove collected item)
-    CALL    DRAW_INVENTORY                  ; redraw the inventory
-    RET                                     ; RET: return from SUB_909C
-    DB      $79, $C6, $04, $D6, $04, $FE, $04, $30 ; inline Z80: LD A,C / ADD A,$04 / SUB $04 ...
-    DB      $FA, $5F, $AF, $47, $CB, $43, $28, $02 ; inline Z80: CP $04 / JR NC / LD E,A ...
-    DB      $C6, $01, $CB, $4B, $28, $02, $C6, $20 ; inline Z80: XOR A / LD B,A / BIT 0 / JR Z ...
-    DB      $2A, $B0, $71, $4F, $37, $3F, $ED, $42 ; inline Z80: ADD A,$01 / BIT 1 / JR Z / ADD A,$20 ...
-    DB      $22, $B0, $71, $11, $F2, $72, $21, $B0 ; inline Z80: LD HL,($70B0) / LD C,A / SCF+CCF / SBC HL,BC
-    DB      $71, $06, $18, $1B, $1B, $1A, $BE, $20 ; inline Z80: LD ($70B0) / LD DE,$72F2 / LD HL,($70B0) ...
-    DB      $0B, $23, $13, $1A, $BE, $20, $F5, $D5 ; inline Z80: LD B,$06 / DEC DE (x2) / DEC DE / CP (HL) ...
-    DB      $E1, $C3, $A2, $92, $10, $ED, $3A, $57 ; inline Z80: JR NZ / INC HL / INC DE / CP (HL) / JR NZ ...
-    DB      $70, $FE, $08, $28, $07, $3A, $59, $70 ; inline Z80: PUSH DE / POP HL / JP $92A2 ...
-    DB      $FE, $08, $20, $0E, $3A, $79, $70, $FE ; inline Z80: DJNZ / LD D,A / LD A,($7057) ...
-    DB      $04, $28, $07, $3A, $5F, $70, $CB, $57 ; inline Z80: CP $08 / JR Z / LD A,($7059) ...
-    DB      $20, $16, $3A, $EE, $73, $E6, $C0, $F5 ; inline Z80: CP $08 / JR NZ / LD A,($7079) ...
-    DB      $FE, $C0, $20, $0E, $3A, $75, $70, $FE ; inline Z80: CP $04 / JR Z / LD A,($705F) / BIT 2 ...
-    DB      $80, $20, $07, $F1, $AF, $32, $75, $70 ; inline Z80: JR NZ / LD A,($7373) / AND $C0 ...
-    DB      $37, $C9, $F1, $32, $75, $70, $37, $3F ; inline Z80: CALL $913B / JR Z / CP $E8 / JR Z ...
-    DB      $C9, $21, $5B, $70, $7E, $E5, $C5, $21 ; inline Z80: CALL $913B / JR Z / LD HL,$A00E ...
-    DB      $FF, $93, $01, $0A, $00, $ED, $B1, $C1 ; inline Z80: LD BC,$0005 / CPIR / POP BC / POP HL ...
-    DB      $E1, $28, $1F, $FE, $E8, $28, $14, $CD ; inline Z80: LD A,($7000) / BIT 7 / SCF+NC / RET ...
-    DB      $3B, $91, $28, $19, $37, $C9, $E5, $C5 ; inline Z80: LD A,$D2 / JR ...
-    DB      $21, $0E, $A0, $01, $05, $00, $ED, $B1 ; inline Z80: LD HL,$7304 / LD A,(HL) / LD ($7084) ...
-    DB      $C1, $E1, $C9, $3A, $00, $70, $CB, $77 ; inline Z80: INC HL / LD A,(HL) / LD ($7085) / LD BC,$1202
-    DB      $37, $C0, $37, $3F, $C9, $3E, $D2, $18 ; inline Z80: LD HL,$7057 / CALL $916C / RET ...
-    DB      $F9, $21, $04, $73, $7E, $32, $84, $70 ; inline Z80: PUSH HL / LD A,($7084) / ADD A,B ...
-    DB      $23, $7E, $32, $85, $70, $01, $02, $12 ; inline Z80: ADD A,C / LD HL,$E3AF / LD BC,$01DF ...
-    DB      $21, $57, $70, $CD, $6C, $91, $C9, $E5 ; inline Z80: ADD HL,BC / LD ($53,$ED) / LD HL,$0070 ...
-    DB      $3A, $84, $70, $80, $47, $3A, $85, $70 ; inline Z80: CB $E6 / CB $D6 / POP HL / LD BC,$0203 ...
-    DB      $C6, $FF, $81, $CD, $E3, $AF, $01, $DF ; inline Z80: CALL $AEA7 / LD HL,$0070 / CB $A6 ...
-    DB      $FF, $09, $EB, $ED, $53, $B0, $71, $21 ; inline Z80: CB $96 / RET
-    DB      $00, $70, $CB, $E6, $CB, $D6, $E1, $01 ; inline Z80: CB $96 / RET (tail)
-    DB      $03, $02, $CD, $A7, $AE, $21, $00, $70 ; inline Z80: tail end bytes
-    DB      $CB, $A6, $CB, $96, $C9         ; inline Z80: end of SUB_909C inline data
+EXIT_DOWN:
+    LD      HL, $71A7
+    LD      A, ($705F)
+    BIT     2, A
+    JR      Z, EXIT_DOWN_ROW
+    INC     HL
+    INC     (HL)
 
-; Change room: no enemies, their sprites cleared, then load the room at
-; the current row and column.
-SUB_919A:
-    LD      HL, WORK_BUFFER
-    SET     0, (HL)
+EXIT_DOWN_ROW:
+    INC     (HL)
+    JP      CHANGE_ROOM
+
+; Up or down? By the legs sprite's Y.
+JOE_EXIT_VERTICAL:
+    LD      BC, $0000
+    DEC     HL
+    LD      A, (HL)
+    CP      $08
+    JR      NC, JOE_EXIT_BOTTOM
+    LD      C, $A4                          ; Y + $A4
+    JR      EXIT_UP
+
+JOE_EXIT_BOTTOM:
+    CP      $AC
+    RET     C
+    LD      C, $5C                          ; Y + $5C
+    JR      EXIT_DOWN
+
+; CONVEYOR ($8F37): a conveyor under Joe's feet adds 1 to B (DX), or takes 1
+; away for the first three of the list. The search runs 7 bytes: one into
+; the next table.
+CONVEYOR:
+    LD      A, ($7079)
+    CP      $08
+    RET     NC
+    LD      A, ($705B)
+    PUSH    HL
+    PUSH    DE
+    PUSH    BC
+    LD      HL, CONVEYOR_TILES
+    LD      BC, $0007
+    CPIR
+    JR      NZ, CONVEYOR_DONE
+    LD      A, C
+    LD      E, $01
+    CP      $04
+    JR      C, CONVEYOR_PUSH
+    LD      E, $FF
+
+CONVEYOR_PUSH:
+    POP     BC
+    LD      A, B
+    ADD     A, E
+    LD      B, A
+    PUSH    BC
+
+CONVEYOR_DONE:
+    POP     BC
+    POP     DE
+    POP     HL
+    RET
+
+; =============================================================================
+; ITEM_TASK ($8F5F): main-loop task, every 4 frames. Unless Joe lies dead
+; from a fall, let the frame interrupt take its next animation step; then
+; open a door beside him if he carries its key, or die on a creature, or
+; pick up the item at his body. Things dealt with are marked in the room's
+; "gone" bitmap.
+; =============================================================================
+ITEM_TASK:
+    LD      A, ($7079)
+    CP      $09
+    RET     Z
+    LD      HL, $7011                       ; $7011 bit 7: the animation may step ($A9F3)
+    LD      A, (HL)
+    XOR     $80
+    LD      (HL), A
+    CALL    JOE_TILES                       ; the tiles around him; $71B0: the top left one
+    LD      A, ($7057)                      ; the tile beside his body, on the side he faces
+    LD      HL, $7078
+    BIT     7, (HL)
+    JR      NZ, LOC_8F81
+    LD      HL, $71B0
+    INC     (HL)
+    INC     (HL)
+    LD      A, ($7059)
+
+LOC_8F81:
+    CP      $9C                             ; a door's bottom: blue (its open drawing $70, key $5D),
+    JR      NZ, LOC_8F8B
+    LD      D, $70
+    LD      A, $5D
+    JR      OPEN_DOOR
+
+LOC_8F8B:
+    CP      $B7                             ; gold,
+    JR      NZ, LOC_8F95
+    LD      D, $69
+    LD      A, $58
+    JR      OPEN_DOOR
+
+LOC_8F95:
+    CP      $C7                             ; red
+    JR      NZ, ITEM_TASK_BODY
+    LD      A, $62
+    LD      D, $77
+
+OPEN_DOOR:
+    LD      HL, $7084
+    LD      (HL), D
+    CALL    HAS_ITEM                        ; the key?
+    JR      NZ, ITEM_TASK_BODY
+    CALL    REMOVE_ITEM                     ; used up
+    LD      HL, ($71B0)                     ; the door's top, 3 rows up
+    LD      BC, $0060
+    SCF
+    CCF
+    SBC     HL, BC
+    LD      ($71B0), HL
+    CALL    FIND_CONTACT                    ; mark it gone
+    LD      A, ($7084)                      ; draw it open
+    CALL    DRAW_OPEN_DOOR_AT
+    PUSH    AF
+    LD      A, $08                          ; sound effect 8: door
+    CALL    PLAY_SOUND
+    POP     AF
+    LD      HL, $0300                       ; 300 points
+    CALL    ADD_POINTS
+    RET
+
+ITEM_TASK_BODY:
+    CALL    JOE_TILES                       ; the tile at his body, in the middle
+    LD      HL, $71B0
+    INC     (HL)
+    LD      A, ($7058)
+    LD      BC, $0008                       ; a creature?
+    LD      HL, CREATURE_TILES
+    CPIR
+    JR      NZ, ITEM_TASK_KEY
+    LD      A, ($704A)                      ; the amulet protects him
+    CP      $00
+    RET     NZ
+
+; Mark the creature gone ($7000 bit 3 tells MARK_GONE it's a creature),
+; and zap him. MARK_GONE toggles the bit, and this runs again every time
+; while he lies zapped on the creature, an odd number of times in all, so
+; it ends up gone (on levels 1-3).
+    LD      HL, $7000
+    SET     3, (HL)
+    PUSH    HL
+    CALL    MARK_THING
+    POP     HL
+    RES     3, (HL)
+    LD      C, $00
+    LD      E, $00
+    JP      JOE_ZAP
+
+ITEM_TASK_KEY:
+    LD      BC, $000C                       ; a key? 50 points
+    LD      HL, KEY_TILES
+    CPIR
+    JR      NZ, ITEM_TASK_OTHER
+    CALL    POINTS_50
+    DEC     HL                              ; its colour by the tile
+    LD      A, (HL)
+    AND     $F8
+    CP      $78
+    JR      NZ, ITEM_TASK_KEY_RED
+    LD      A, $58
+    JR      PICK_UP
+
+ITEM_TASK_KEY_RED:
+    CP      $68
+    LD      A, $62
+    JR      NZ, PICK_UP
+    LD      A, $5D
+
+; Pick up item A: into the inventory (a jewel only scores), then
+; blank it out and recolour the room.
+PICK_UP:
+    PUSH    BC
+    LD      C, A
+    CALL    ADD_ITEM                        ; inventory full?
+    JR      C, PICK_UP_DONE
+    PUSH    AF
+    LD      A, $02                          ; sound effect 2: pickup
+    CALL    PLAY_SOUND
+    POP     AF
+    CALL    VRAM_LOCK
+    POP     BC
+    PUSH    BC
+    CALL    MARK_THING                      ; mark it gone; $71B0: its top left tile
+    LD      A, $0B                          ; blank 2x2 tiles
+    LD      DE, ($71B0)
+    CALL    DRAW_ICON
+    CALL    RECOLOUR                        ; the torch may light the room
+    CALL    VRAM_UNLOCK
+
+PICK_UP_DONE:
+    POP     BC
+    RET
+
+; Sword, torch, jewel or amulet? By what CPIR leaves in C.
+ITEM_TASK_OTHER:
+    LD      BC, $0010
+    LD      HL, PICKUP_TILES
+    CPIR
+    RET     NZ
+    LD      A, C
+    CP      $04
+    JR      NC, ITEM_TASK_JEWEL
+    CALL    POINTS_100                      ; the amulet: 100 points; it protects him for
+    LD      A, $A0                          ; 160 contact checks
+    LD      ($704A), A
+    LD      A, $8C
+    JR      ITEM_TASK_PICK
+
+ITEM_TASK_JEWEL:
+    CP      $08
+    JR      NC, ITEM_TASK_TORCH
+    LD      A, $44                          ; the jewel (1000 points, at $A56C)
+    CALL    POINTS_50
+    JR      ITEM_TASK_PICK
+
+; The points to add, into $70BD (BCD): 50, 100, 3000.
+POINTS_50:
+    PUSH    HL
+    LD      HL, $0050
+    JR      SET_POINTS
+
+POINTS_100:
+    PUSH    HL
+    LD      HL, $0100
+    JR      SET_POINTS
+
+POINTS_3000:
+    PUSH    HL
+    LD      HL, $3000
+
+SET_POINTS:
+    LD      ($70BD), HL
+    POP     HL
+    RET
+
+ITEM_TASK_TORCH:
+    CP      $0C                             ; the torch: 3000 points
+    JR      NC, ITEM_TASK_SWORD
+    CALL    POINTS_3000
+    LD      A, $53
+    JR      ITEM_TASK_PICK
+
+ITEM_TASK_SWORD:
+    LD      A, $91                          ; the sword: 50 points
+    CALL    POINTS_50
+
+ITEM_TASK_PICK:
+    JP      PICK_UP
+
+; HAS_ITEM ($908F): Z and carry set if the inventory holds item A; HL, BC are
+; left where CPIR stopped, for REMOVE_ITEM.
+HAS_ITEM:
+    LD      HL, $71B2
+    LD      BC, $0006
+    CPIR
+    SCF
+    RET     Z
+    SCF
+    CCF
+    RET
+
+; REMOVE_ITEM ($909C): after HAS_ITEM, close the gap the item leaves and
+; redraw the HUD.
+REMOVE_ITEM:
+    PUSH    HL
+    POP     DE
+    DEC     DE
+    LDIR
+    CALL    DRAW_INVENTORY
+    RET
+
+; MARK_THING ($90A5): the thing whose tile CPIR found (C: what it left) is
+; gone. C mod 4 gives the tile's corner of the 2x2 thing; $71B0 moves to its
+; top left tile. Then find the thing's contact entry by its position
+; (searching from the end, 24 entries) and mark it gone. Once a low byte
+; matches but its high byte doesn't, the search compares the entries' low
+; bytes with the position's high byte. Not found, it runs on into
+; JUMP_PRESSED, harmlessly.
+MARK_THING:
+    LD      A, C
+    ADD     A, $04
+
+MARK_THING_MOD4:
+    SUB     $04
+    CP      $04
+    JR      NC, MARK_THING_MOD4
+    LD      E, A                            ; corner: bit 0 right, bit 1 bottom
     XOR     A
-    LD      ($707A), A                      ; no enemies
-    LD      HL, $7308                       ; clear the enemies' 8 sprites
+    LD      B, A
+    BIT     0, E
+    JR      Z, MARK_THING_ROW
+    ADD     A, $01
+
+MARK_THING_ROW:
+    BIT     1, E
+    JR      Z, MARK_THING_TOP_LEFT
+    ADD     A, $20
+
+MARK_THING_TOP_LEFT:
+    LD      HL, ($71B0)
+    LD      C, A
+    SCF
+    CCF
+    SBC     HL, BC
+    LD      ($71B0), HL
+
+FIND_CONTACT:
+    LD      DE, $72F2
+    LD      HL, $71B0
+    LD      B, $18
+
+FIND_CONTACT_NEXT:
+    DEC     DE
+
+FIND_CONTACT_LO:
+    DEC     DE
+    LD      A, (DE)
+    CP      (HL)
+    JR      NZ, FIND_CONTACT_LOOP
+    INC     HL
+    INC     DE
+    LD      A, (DE)
+    CP      (HL)
+    JR      NZ, FIND_CONTACT_LO
+    PUSH    DE
+    POP     HL
+    JP      MARK_GONE
+
+FIND_CONTACT_LOOP:
+    DJNZ    FIND_CONTACT_NEXT
+
+; JUMP_PRESSED ($90E3): carry set on a new press of a fire button. During
+; the walk into the pyramid a brick beside him counts as one (but not on a
+; rope). $7075 latches the button: $80 released, $C0 held, 0 just pressed.
+JUMP_PRESSED:
+    LD      A, ($7057)
+    CP      $08
+    JR      Z, JUMP_PRESSED_AUTO
+    LD      A, ($7059)
+    CP      $08
+    JR      NZ, JUMP_PRESSED_FIRE
+
+JUMP_PRESSED_AUTO:
+    LD      A, ($7079)
+    CP      $04
+    JR      Z, JUMP_PRESSED_FIRE
+    LD      A, ($705F)
+    BIT     2, A
+    JR      NZ, JUMP_PRESSED_YES
+
+JUMP_PRESSED_FIRE:
+    LD      A, ($73EE)
+    AND     $C0
+    PUSH    AF
+    CP      $C0
+    JR      NZ, JUMP_PRESSED_NO
+    LD      A, ($7075)
+    CP      $80
+    JR      NZ, JUMP_PRESSED_NO
+    POP     AF
+    XOR     A
+    LD      ($7075), A
+
+JUMP_PRESSED_YES:
+    SCF
+    RET
+
+JUMP_PRESSED_NO:
+    POP     AF
+    LD      ($7075), A
+    SCF
+    CCF
+    RET
+
+; IS_FLOOR ($9122), JOE_ON_FLOOR ($911E, the tile at his feet): carry clear if
+; Joe can stand on tile A: a floor, a disappearing floor while it's shown,
+; or a tile that kills him (then A = $D2, fire).
+JOE_ON_FLOOR:
+    LD      HL, $705B
+    LD      A, (HL)
+
+IS_FLOOR:
+    PUSH    HL
+    PUSH    BC
+    LD      HL, FLOOR_TILES
+    LD      BC, $000A
+    CPIR
+    POP     BC
+    POP     HL
+    JR      Z, IS_FLOOR_YES
+    CP      $E8
+    JR      Z, IS_FLOOR_DISAPPEARING
+    CALL    IS_HAZARD
+    JR      Z, IS_FLOOR_FIRE
+    SCF
+    RET
+
+; IS_HAZARD ($913B): Z if tile A kills Joe.
+IS_HAZARD:
+    PUSH    HL
+    PUSH    BC
+    LD      HL, HAZARD_TILES
+    LD      BC, $0005
+    CPIR
+    POP     BC
+    POP     HL
+    RET
+
+IS_FLOOR_DISAPPEARING:
+    LD      A, ($7000)
+    BIT     6, A
+    SCF
+    RET     NZ
+
+IS_FLOOR_YES:
+    SCF
+    CCF
+    RET
+
+IS_FLOOR_FIRE:
+    LD      A, $D2
+    JR      IS_FLOOR_YES
+
+; JOE_TILES ($9156): read the 3x2 tiles around Joe's legs sprite into
+; $7057-$705C. READ_TILES ($9159, HL: a sprite's entry) does it for any
+; sprite: the tile at X+1, Y+18 (rounded up to tiles), one column left and
+; one row up, is the top left of the block; its name table position goes
+; into $71B0.
+JOE_TILES:
+    LD      HL, $7304
+
+READ_TILES:
+    LD      A, (HL)
+    LD      ($7084), A
+    INC     HL
+    LD      A, (HL)
+    LD      ($7085), A
+    LD      BC, $1202                       ; B: Y + 18, C: X + 1 (with the -1 below)
+    LD      HL, $7057
+    CALL    READ_TILES_AT
+    RET
+
+; READ_TILES_AT ($916C): the tile at X + C - 1, Y + B, one row up and
+; one column left, into $71B0; read 2 rows of 3 from there into HL.
+READ_TILES_AT:
+    PUSH    HL
+    LD      A, ($7084)
+    ADD     A, B
+    LD      B, A
+    LD      A, ($7085)
+    ADD     A, $FF
+    ADD     A, C
+    CALL    TILE_AT
+    LD      BC, $FFDF
+    ADD     HL, BC
+    EX      DE, HL
+    LD      ($71B0), DE
+    LD      HL, $7000                       ; TILE_ROWS: read (bit 4), rows 32 apart (bit 2)
+    SET     4, (HL)
+    SET     2, (HL)
+    POP     HL
+    LD      BC, $0203                       ; 2 rows of 3
+    CALL    TILE_ROWS
+    LD      HL, $7000
+    RES     4, (HL)
+    RES     2, (HL)
+    RET
+
+; LOAD_ROOM_NOW ($919A): the frame interrupt's room load ($70B1 bit 3):
+; clear the enemy sprites, then LOAD_ROOM.
+LOAD_ROOM_NOW:
+    LD      HL, $7000                       ; $7000 bit 0 (never tested)
+    SET     0, (HL)
+    XOR     A                               ; no enemies
+    LD      ($707A), A
+    LD      HL, $7308                       ; their sprites, $7308-$7328
     LD      BC, $0020
-    CALL    SUB_840B
+    CALL    CLEAR_RAM
     CALL    LOAD_ROOM
     RET
 
-SUB_91B0:
-    LD      A, ($7096)                      ; A = ($7096) direction/state counter
-    DEC     A                               ; DEC A
-    JP      P, LOC_91B9                     ; JP P, LOC_91B9: if still >= 0, keep value
-    LD      A, $03                          ; A = $03 (wrap back to 3)
-
-LOC_91B9:                                   ; LOC_91B9:
-    LD      ($7096), A                      ; ($7096) = A: store wrapped counter
-    RET                                     ; RET: return with wrapped direction counter
-    DB      $21, $AD, $70, $35, $C0, $36, $02, $3A ; inline Z80: LD HL,$70AD / DEC (HL) / RET NZ ...
-    DB      $AA, $70, $3D, $F2, $CD, $91, $3E, $07 ; inline Z80: LD ($70AA) / DEC A / JP P / LD A,$07 ...
-    DB      $32, $AA, $70, $C9              ; inline Z80: LD ($70AA) / RET
-
-SUB_91D1:
-    SUB     (HL)                            ; SUB (HL): A -= (HL) (compute signed delta)
-    JP      P, LOC_91D7                     ; JP P, LOC_91D7: if positive, skip NEG
-    NEG                                     ; NEG: make positive (absolute value)
-
-LOC_91D7:                                   ; LOC_91D7:
-    CP      B                               ; CP B: |delta| vs threshold B
-    RET                                     ; RET (flags: C if within threshold)
-    DB      $F5, $F1, $21, $14, $20, $11, $01, $00 ; inline Z80: PUSH AF / POP AF / LD HL,$2014 ...
-    DB      $CD, $25, $AE, $C9, $3A, $AC, $70, $3D ; inline Z80: LD DE,$0001 / CALL $AE25 / RET ...
-    DB      $FE, $00, $20, $02, $3E, $01, $32, $AC ; inline Z80: LD A,($70AC) / DEC A / CP $00 / JR NZ ...
-    DB      $70, $3A, $79, $70, $FE, $08, $D0, $21 ; inline Z80: LD A,$01 / LD ($70AC) / LD A,($7079) ...
-    DB      $4A, $70, $7E, $FE, $00, $28, $15, $35 ; inline Z80: JP NC / LD HL,($704A) ...
-    DB      $FE, $01, $28, $07, $3E, $E0, $CD ; inline Z80: CP $00 / JR Z / DEC (HL) / CP $01 ...
-
-SUB_9208:
-    EXX                                     ; EXX: swap to alternate BC/DE/HL register set
-    SUB     C                               ; SUB C: A -= C (apply delta from alternate C)
-    JR      LOC_921F                        ; JR LOC_921F: jump to main collision loop
-    DB      $3E, $C0, $CD, $D9, $91, $AF, $32, $4A ; inline Z80: LD A,$C0 / CALL $91D9 / XOR A / LD ($704A)
-    DB      $70, $3E, $8C, $CD, $8F, $90, $20, $03 ; inline Z80: LD A,$8C / CALL $908F / JR NZ ...
-    DB      $CD, $9C, $90                   ; inline Z80: CALL $909C (tail)
-
-LOC_921F:
-    CALL    SUB_92D1                        ; CALL SUB_92D1: toggle $7098 flip-flag (XOR $80), CALL SUB_91B0 if zero
-    LD      A, ($704A)                      ; A = ($704A) collision state flag
-    CP      $00                             ; CP $00
-    RET     NZ                              ; RET NZ: non-zero collision state -- exit loop
-    LD      HL, $7300                       ; HL = $7300 (player tile X)
-    LD      A, (HL)                         ; A = ($7300) player X lo
-    LD      ($7084), A                      ; ($7084) = A: cache player X lo
-    INC     HL                              ; INC HL -> $7301
-    LD      A, (HL)                         ; A = ($7301) player X hi
-    LD      ($7085), A                      ; ($7085) = A: cache player X hi
-    LD      HL, $72C1                       ; HL = $72C1 (room tile/collision data start)
-    PUSH    HL                              ; PUSH HL: save scan pointer for LOC_9238 loop
-
-LOC_9238:
-    POP     HL                              ; POP HL: restore scan pointer
-
-LOC_9239:                                   ; LOC_9239: -- tile scan loop body
-    INC     HL                              ; INC HL: advance to next tile entry (skip type byte)
-    LD      C, (HL)                         ; C = (HL): read tile column
-    INC     HL                              ; INC HL
-    LD      A, (HL)                         ; A = (HL): read tile row
-    CP      $FE                             ; CP $FE: end-of-data sentinel?
-    RET     Z                               ; RET Z: done -- no collision found
-    CP      $FF                             ; CP $FF: enemy entry separator?
-    JR      NZ, LOC_9239                    ; JR NZ, LOC_9239: not separator -- keep scanning
-    PUSH    HL                              ; PUSH HL: save pointer for this entry
-    LD      HL, $7304                       ; HL = $7304 (player secondary X)
-    LD      B, $00                          ; B = $00
-    ADD     HL, BC                          ; ADD HL, BC: index to players tile column slot
-    LD      A, ($7084)                      ; A = ($7084) player X lo
-    LD      B, $0D                          ; B = $0D (half-tile threshold = 13 pixels)
-    CALL    SUB_91D1                        ; CALL SUB_91D1: |player X - tile X| vs 13
-    JR      NC, LOC_9238                    ; JR NC, LOC_9238: outside X range -- skip this entry
-    INC     HL                              ; INC HL: advance to row comparison
-    LD      A, ($7085)                      ; A = ($7085) player X hi
-    LD      B, $08                          ; B = $08 (row threshold = 8)
-    CALL    SUB_91D1                        ; CALL SUB_91D1: |player row - tile row| vs 8
-    JR      NC, LOC_9238                    ; JR NC, LOC_9238: outside Y range -- skip
-    INC     HL                              ; INC HL
-    INC     HL                              ; INC HL: skip to tile type byte
-    LD      A, (HL)                         ; A = (HL): read tile action type
-    CP      $00                             ; CP $00: empty?
-    JR      Z, LOC_9238                     ; JR Z, LOC_9238: empty tile -- skip
-    PUSH    HL                              ; PUSH HL: save tile type pointer
-    LD      A, $91                          ; A = $91
-    CALL    SUB_908F                        ; CALL SUB_908F: CPIR $91 in item table
-    JR      NZ, LOC_928F                    ; JR NZ, LOC_928F: not $91 -- try enemy collision
-    CALL    SUB_909C                        ; CALL SUB_909C: shift item table (collect item)
-    PUSH    AF                              ; PUSH AF
-    LD      A, $03                          ; A = $03
-    CALL    SUB_AC1A                        ; CALL SUB_AC1A: trigger sound effect $03 (pickup chime)
-    POP     AF                              ; POP AF
-    POP     HL                              ; POP HL: restore tile type pointer
-    LD      A, (HL)                         ; A = (HL): re-read tile type
-    LD      (HL), $00                       ; (HL) = $00: clear tile (remove from room)
-    LD      HL, $2000                       ; HL = $2000 (score delta: medium gem)
-    CP      $0F                             ; CP $0F: check tile type for gem variant
-    JR      Z, LOC_9287                     ; JR Z, LOC_9287: type $0F -> medium gem ($2000)
-    LD      HL, $3000                       ; HL = $3000 (score delta: large gem)
-
-LOC_9287:
-    CALL    SUB_A587                        ; CALL SUB_A587: add score (calls SUB_AF70 + SUB_AEFE)
-    POP     HL                              ; POP HL: restore scan pointer
-    CALL    SUB_92A2                        ; CALL SUB_92A2: enemy distance check / collision reaction
-    RET                                     ; RET
-
-LOC_928F:
-    POP     HL                              ; POP HL: discard tile pointer
-    POP     HL                              ; POP HL: discard scan pointer
-    LD      A, ($71A6)                      ; A = ($71A6) room difficulty
-    CP      $05                             ; CP $05
-    JR      NC, LOC_929B                    ; JR NC, LOC_929B: difficulty >= 5 -> no reaction
-    CALL    SUB_92A2                        ; CALL SUB_92A2: process enemy distance reaction
-
-LOC_929B:
-    LD      C, $00                          ; C = $00
-    LD      E, $00                          ; E = $00 (clear collision deltas)
-    JP      LOC_8DA2                        ; JP LOC_8DA2: back to game state dispatch
-
-SUB_92A2:
-    LD      A, ($71A6)                      ; A = ($71A6) room difficulty
-    CP      $04                             ; CP $04
-    JR      C, LOC_92AF                     ; JR C, LOC_92AF: difficulty < 4 -- always react
-    LD      A, (WORK_BUFFER)                ; A = (WORK_BUFFER) check bit 3 (enemy-present flag)
-    BIT     3, A                            ; BIT 3, A
-    RET     NZ                              ; RET NZ: enemy present -- no reaction (suppress double-hit)
-
-LOC_92AF:
-    LD      A, $C0                          ; A = $C0
-    DEC     HL                              ; DEC HL: point at tile entry
-    SUB     L                               ; SUB L: A = $C0 - L (distance from centre)
-    NEG                                     ; NEG: make positive
-    SRA     A                               ; SRA A: halve the distance
-    CALL    SUB_92BE                        ; mark the contact's thing gone
-    LD      C, $00                          ; LD C,$00: C = 0 (clear speed component)
-    LD      E, C                            ; LD E,C: E = 0 (clear second speed component)
-    RET                                     ; RET: return with C=E=0 (no reaction)
-
-; Toggle thing A-1's bit in the room's "gone" bitmap ($70C0): the item
-; picked up, door opened or enemy killed stays gone when the room is
-; reloaded (see NEXT_THING_GONE).
-SUB_92BE:
+; STEP_ANIM_FRAME ($91B0): $7096 counts 3, 2, 1, 0, 3, ...: the barrier's and
+; disappearing floor's frame, and the dead Joe's legs.
+STEP_ANIM_FRAME:
+    LD      A, ($7096)
     DEC     A
-    LD      ($71A2), A                      ; thing A-1
+    JP      P, STEP_ANIM_FRAME_SET
+    LD      A, $03
+
+STEP_ANIM_FRAME_SET:
+    LD      ($7096), A
+    RET
+
+; STEP_COUNT ($91BD): a step every other call: $70AA counts 7 down to 0.
+STEP_COUNT:
+    LD      HL, $70AD
+    DEC     (HL)
+    RET     NZ
+    LD      (HL), $02
+    LD      A, ($70AA)
+    DEC     A
+    JP      P, STEP_COUNT_SET
+    LD      A, $07
+
+STEP_COUNT_SET:
+    LD      ($70AA), A
+    RET
+
+; NEAR ($91D1): carry set if A and (HL) are less than B apart.
+NEAR:
+    SUB     (HL)
+    JP      P, NEAR_CP
+    NEG
+
+NEAR_CP:
+    CP      B
+    RET
+
+; SET_CREATURE_COLOUR ($91D9): colour entry 20 (the creatures, $A0-$A7) = A.
+SET_CREATURE_COLOUR:
+    PUSH    AF
+    POP     AF
+    LD      HL, $2014
+    LD      DE, $0001
+    CALL    FILL_VRAM_LOCKED
+    RET
+
+; =============================================================================
+; CONTACT_TASK ($91E5): main-loop task, every 2 frames. Count down the
+; treasure room's timer and the amulet's; step the barrier frame. Unless the
+; amulet protects him, see whether Joe touches an enemy: less than 13 lines
+; and 8 pixels apart, and visible. With the sword he kills it; without, it
+; kills him. On levels 1-4 the enemy is then gone for good.
+; =============================================================================
+CONTACT_TASK:
+    LD      A, ($70AC)                      ; the treasure room's timer, down to 1
+    DEC     A
+    CP      $00
+    JR      NZ, LOC_91EF
+    LD      A, $01
+
+LOC_91EF:
+    LD      ($70AC), A
+    LD      A, ($7079)                      ; Joe dead: nothing more
+    CP      $08
+    RET     NC
+    LD      HL, $704A                       ; the amulet's timer
+    LD      A, (HL)
+    CP      $00
+    JR      Z, AMULET_DROP
+    DEC     (HL)
+    CP      $01
+    JR      Z, AMULET_OFF
+    LD      A, $E0                          ; creatures grey while it protects him
+    CALL    SET_CREATURE_COLOUR
+    JR      CONTACT_CHECK
+
+AMULET_OFF:
+    LD      A, $C0                          ; then dark green
+    CALL    SET_CREATURE_COLOUR
+    XOR     A
+    LD      ($704A), A
+
+AMULET_DROP:
+    LD      A, $8C                          ; out of the inventory once it's off
+    CALL    HAS_ITEM
+    JR      NZ, CONTACT_CHECK
+    CALL    REMOVE_ITEM
+
+CONTACT_CHECK:
+    CALL    STEP_BARRIER
+    LD      A, ($704A)                      ; protected
+    CP      $00
+    RET     NZ
+    LD      HL, $7300                       ; Joe's Y and X
+    LD      A, (HL)
+    LD      ($7084), A
+    INC     HL
+    LD      A, (HL)
+    LD      ($7085), A
+    LD      HL, $72C1                       ; the contact list: (offset, $FF) for an enemy
+    PUSH    HL
+
+CONTACT_NEXT:
+    POP     HL
+
+CONTACT_SCAN:
+    INC     HL
+    LD      C, (HL)
+    INC     HL
+    LD      A, (HL)
+    CP      $FE
+    RET     Z
+    CP      $FF
+    JR      NZ, CONTACT_SCAN
+    PUSH    HL                              ; its sprite, offset bytes after $7304
+    LD      HL, $7304
+    LD      B, $00
+    ADD     HL, BC
+    LD      A, ($7084)                      ; Y less than 13 apart
+    LD      B, $0D
+    CALL    NEAR
+    JR      NC, CONTACT_NEXT
+    INC     HL
+    LD      A, ($7085)                      ; X less than 8 apart
+    LD      B, $08
+    CALL    NEAR
+    JR      NC, CONTACT_NEXT
+    INC     HL                              ; visible
+    INC     HL
+    LD      A, (HL)
+    CP      $00
+    JR      Z, CONTACT_NEXT
+    PUSH    HL                              ; the sword?
+    LD      A, $91
+    CALL    HAS_ITEM
+    JR      NZ, ENEMY_KILLS
+    CALL    REMOVE_ITEM                     ; used up
+    PUSH    AF
+    LD      A, $03                          ; sound effect 3: sword kill
+    CALL    PLAY_SOUND
+    POP     AF
+    POP     HL
+    LD      A, (HL)                         ; hide the enemy
+    LD      (HL), $00
+    LD      HL, $2000                       ; 2000 points for a white one, 3000 others
+    CP      $0F
+    JR      Z, SWORD_POINTS
+    LD      HL, $3000
+
+SWORD_POINTS:
+    CALL    ADD_POINTS
+    POP     HL
+    CALL    MARK_GONE                       ; gone for good
+    RET
+
+ENEMY_KILLS:
+    POP     HL
+    POP     HL
+    LD      A, ($71A6)                      ; on levels 1-4 it's gone for good
+    CP      $05
+    JR      NC, ENEMY_ZAP
+    CALL    MARK_GONE
+
+ENEMY_ZAP:
+    LD      C, $00
+    LD      E, $00
+    JP      JOE_ZAP
+
+; MARK_GONE ($92A2): mark the thing whose contact entry ends at HL gone, in
+; the room's 2 bytes of the "gone" bitmap at $70C0. From level 4 on, a
+; creature that killed Joe stays ($7000 bit 3).
+MARK_GONE:
+    LD      A, ($71A6)
+    CP      $04
+    JR      C, MARK_GONE_ENTRY
+    LD      A, ($7000)
+    BIT     3, A
+    RET     NZ
+
+MARK_GONE_ENTRY:
+    LD      A, $C0                          ; the entry's number
+    DEC     HL
+    SUB     L
+    NEG
+    SRA     A
+    CALL    TOGGLE_GONE
+    LD      C, $00
+    LD      E, C
+    RET
+
+; Toggle thing A - 1's bit (NEXT_THING_GONE counts it up again).
+TOGGLE_GONE:
+    DEC     A
+    LD      ($71A2), A
     CALL    ROOM_NUMBER
     SLA     A
-    LD      ($71A1), A                      ; the room's bitmap bytes
-    CALL    NEXT_THING_GONE                 ; HL = its byte, D = its bit
+    LD      ($71A1), A
+    CALL    NEXT_THING_GONE
     LD      A, (HL)
     XOR     D
     LD      (HL), A
     RET
 
-SUB_92D1:
-    LD      HL, $7098                       ; HL = $7098 (movement flip-flag)
-    LD      A, $80                          ; A = $80
-    XOR     (HL)                            ; XOR (HL): toggle bit 7
-    LD      (HL), A                         ; (HL) = A: store new flag
-    CALL    Z, SUB_91B0                     ; CALL Z, SUB_91B0: if result=0, DEC+wrap $7096 direction counter
-    RET                                     ; RET: return after direction flip
-    DB      $3A, $79, $70, $FE, $01, $20, $32, $3A ; inline Z80 (post-RET): LD A,($7079) / CP $01 ...
-    DB      $AA, $70, $CB, $2F, $21, $80, $93, $F5 ; inline Z80: LD A,($70AA) / RRCA / LD HL,$9380 ...
-    DB      $FE, $00, $28, $05, $3E, $09, $CD, $1A ; inline Z80: CP $00 / JR Z / LD A,$09 / CALL $AC1A ...
-    DB      $AC, $F1, $CD, $69, $93, $30, $0A, $21 ; inline Z80: POP AF / CALL $9369 / JR NC / LD HL,$9378 ...
-    DB      $78, $93, $18, $05, $3A, $AA, $70, $CB ; inline Z80: JR / LD A,($70AA) / RRCA / RLCA ...
-    DB      $2F, $CB, $27, $CD, $40, $A5, $11, $02 ; inline Z80: CALL $A540 / LD DE,$7302 / LD (DE),A ...
-    DB      $73, $12, $11, $06, $73, $23, $7E, $12 ; inline Z80: LD DE,$7306 / INC HL / LD A,(HL) ...
-    DB      $C9, $FE, $02, $20, $0E, $21, $88, $93 ; inline Z80: RET / CP $02 / JR NZ / LD HL,$9388 ...
-    DB      $CD, $69, $93, $38, $03, $21, $8A, $93 ; inline Z80: CALL $9369 / JR C / LD HL,$938A ...
-    DB      $AF, $18, $DE, $FE, $03, $20, $0F, $21 ; inline Z80: XOR A / JR / CP $03 / JR NZ ...
-    DB      $5F, $70, $CB, $76, $28, $03, $CB, $B6 ; inline Z80: BIT 6,($705F) / JR Z / RES 6 / RET ...
-    DB      $C9, $21, $8E, $93, $18, $C6, $FE, $04 ; inline Z80: LD HL,$938E / JR / CP $09 / JR NZ ...
-    DB      $20, $05, $21, $96, $93, $18, $BD, $FE ; inline Z80: LD HL,$939E / LD A,($7096) / JR ...
-    DB      $05, $20, $06, $21, $8C, $93, $AF, $18 ; inline Z80: CP $04 / JR NZ / PUSH AF / LD A,($7076) ...
-    DB      $B8, $FE, $09, $20, $08, $21, $9E, $93 ; inline Z80: BIT 7 / JR NZ / POP AF / SCF / RET ...
-    DB      $3A, $96, $70, $18, $AC, $FE, $08, $C8 ; tile coord table: [row,col] pairs for tile placement (start)
-    DB      $FE, $0A, $C8, $AF, $C3, $E8, $92, $F5 ; tile coord table: continued pairs
-    DB      $3A, $76, $70, $18, $04, $F5, $3A, $78 ; tile coord table: continued pairs
-    DB      $70, $CB, $7F, $20, $03, $F1, $37, $C9 ; tile coord table: continued pairs
-    DB      $F1, $37, $3F, $C9, $34, $98, $6C, $A0 ; tile coord table: continued pairs
-    DB      $34, $98, $34, $9C, $40, $A4, $7C, $AC ; tile coord table: continued pairs
-    DB      $40, $A4, $40, $A8, $4C, $B0, $50, $B4 ; tile coord table: continued pairs
-    DB      $64, $C8, $54, $B8, $58, $BC, $54, $B8 ; tile speed/count table: speed level data (start)
-    DB      $58, $BC, $5C, $C0, $60, $C4, $5C, $C0 ; tile speed/count table: sentinel $FF + flags
-    DB      $60, $C4, $68, $CC, $68, $D0, $68, $CC ; tile speed/count table: flag bytes continued
-    DB      $68, $D0, $D8, $D4, $D8, $D4, $E0, $DC ; tile speed/count table: continued
-    DB      $E0, $DC, $04, $03, $03, $01, $01, $01 ; tile speed/count table: continued
-    DB      $01, $00, $00, $00, $00, $00, $FF, $FF ; tile speed/count table: continued
-    DB      $FF, $FF, $FB, $FB, $F8, $4F, $F0, $F0 ; tile speed/count table: continued
-    DB      $80, $80, $F9, $AF, $4A, $A0, $A0, $F0 ; tile speed/count table: continued
-    DB      $F0, $A9, $B5, $4B, $B0, $B0, $50, $50 ; tile speed/count table: continued
-    DB      $B9, $BC, $4B, $B0, $B0, $C0, $C0, $B9 ; tile speed/count table: continued
-    DB      $BD, $4B, $B0, $B0, $E0, $E0, $B9, $EC ; tile speed/count table: end + "GAME" ASCII text + IDs
-    DB      $4E, $E0, $E0, $C0, $C0, $E9, $ED, $4E ; inline text: "GAME" ($47$41$4D$45) + $00 + "OVER"
-    DB      $E0, $E0, $D0, $D0, $E9, $A7, $4A, $A0 ; inline text: "OVER" ($4F$56$45$52) + tile IDs for HUD
-    DB      $A0, $70, $70, $A9, $E7, $4E, $E0, $E0 ; HUD tile ID table: score/lives icon tile indices
-    DB      $70, $70, $E9, $08, $10, $11, $05, $04 ; HUD tile ID table: continued (gems, torches, skull)
-    DB      $06, $B9, $B8, $BA, $C4, $47, $41, $4D ; HUD tile ID table: continued (rope, ladder, boot)
-    DB      $45, $00, $4F, $56, $45, $52, $04, $05 ; HUD tile ID table: continued (torch, special tiles)
-    DB      $06, $B9, $B8, $BA, $9B, $9A, $97, $96 ; HUD tile ID table: last row of tile IDs
-    DB      $63, $62, $D1, $D0, $D9, $99, $D8, $98 ; HUD tile ID table: continued
-    DB      $AF, $A9, $AE, $A8, $A3, $A2, $A1, $A0 ; HUD tile ID table: continued
-    DB      $A6, $A7, $A4, $A5, $6B, $6A, $69, $68 ; HUD tile ID table: end sentinel bytes
-    DB      $7B, $7A, $79, $78, $73, $72, $71, $70 ; "{zyxsrqp"
+; STEP_BARRIER ($92D1): step the barrier frame every other call.
+STEP_BARRIER:
+    LD      HL, $7098
+    LD      A, $80
+    XOR     (HL)
+    LD      (HL), A
+    CALL    Z, STEP_ANIM_FRAME
+    RET
+
+; =============================================================================
+; JOE_SPRITES ($92DC): set Joe's two sprite patterns for his state, from
+; JOE_FRAMES (the walking and climbing frames by the step count $70AA), and
+; play footsteps while he walks.
+; =============================================================================
+JOE_SPRITES:
+    LD      A, ($7079)
+    CP      $01
+    JR      NZ, JOE_SPRITES_JUMP
+    LD      A, ($70AA)                      ; the walking frame
+    SRA     A
+
+JOE_SPRITES_WALK:
+    LD      HL, JOE_WALK_LEFT               ; facing left
+    PUSH    AF
+    CP      $00
+    JR      Z, JOE_SPRITES_SIDE
+    LD      A, $09                          ; sound effect 9: footsteps
+    CALL    PLAY_SOUND
+
+JOE_SPRITES_SIDE:
+    POP     AF
+    CALL    FACING_RIGHT
+    JR      NC, SET_JOE_FRAME
+    LD      HL, JOE_FRAMES                  ; facing right
+    JR      SET_JOE_FRAME
+
+JOE_SPRITES_STEP:
+    LD      A, ($70AA)
+    SRA     A
+
+; SET_JOE_FRAME ($9305): Joe's patterns from frame A of the table at HL.
+SET_JOE_FRAME:
+    SLA     A
+    CALL    TABLE_BYTE
+    LD      DE, $7302
+    LD      (DE), A
+    LD      DE, $7306
+    INC     HL
+    LD      A, (HL)
+    LD      (DE), A
+    RET
+
+JOE_SPRITES_JUMP:
+    CP      $02                             ; jumping
+    JR      NZ, JOE_SPRITES_LADDER
+    LD      HL, JOE_JUMP_RIGHT
+    CALL    FACING_RIGHT
+    JR      C, JOE_SPRITES_FIRST
+    LD      HL, JOE_JUMP_LEFT
+
+JOE_SPRITES_FIRST:
+    XOR     A
+    JR      SET_JOE_FRAME
+
+JOE_SPRITES_LADDER:
+    CP      $03                             ; on a ladder: the frame stays while he stands still
+    JR      NZ, JOE_SPRITES_ROPE
+    LD      HL, $705F
+    BIT     6, (HL)
+    JR      Z, JOE_SPRITES_LADDER_STEP
+    RES     6, (HL)
+    RET
+
+JOE_SPRITES_LADDER_STEP:
+    LD      HL, JOE_CLIMB
+    JR      JOE_SPRITES_STEP
+
+JOE_SPRITES_ROPE:
+    CP      $04
+    JR      NZ, JOE_SPRITES_POLE
+    LD      HL, JOE_SWING
+    JR      JOE_SPRITES_STEP
+
+JOE_SPRITES_POLE:
+    CP      $05
+    JR      NZ, JOE_SPRITES_DEAD
+    LD      HL, JOE_POLE
+    XOR     A
+    JR      SET_JOE_FRAME
+
+JOE_SPRITES_DEAD:
+    CP      $09                             ; dead from a fall: the legs twitch with $7096
+    JR      NZ, JOE_SPRITES_OTHER
+    LD      HL, JOE_LYING
+    LD      A, ($7096)
+    JR      SET_JOE_FRAME
+
+JOE_SPRITES_OTHER:
+    CP      $08                             ; zapped and burnt: set by their handlers
+    RET     Z
+    CP      $0A
+    RET     Z
+    XOR     A                               ; standing, falling, letting go: standing
+    JP      JOE_SPRITES_WALK
+
+; Unreachable.
+    PUSH    AF
+    LD      A, ($7076)
+    JR      LOC_936D
+
+; FACING_RIGHT ($9369): carry set if Joe faces right.
+FACING_RIGHT:
+    PUSH    AF
+    LD      A, ($7078)
+
+LOC_936D:
+    BIT     7, A
+    JR      NZ, FACING_LEFT
+    POP     AF
+    SCF
+    RET
+
+FACING_LEFT:
+    POP     AF
+    SCF
+    CCF
+    RET
+
+; Joe's frames: patterns of his body and of his hat, face and legs.
+JOE_FRAMES:
+    DB      $34, $98, $6C, $A0, $34, $98, $34, $9C ; walking right (by $70AA / 2), and standing
+
+JOE_WALK_LEFT:
+    DB      $40, $A4, $7C, $AC, $40, $A4, $40, $A8 ; walking left
+
+JOE_JUMP_RIGHT:
+    DB      $4C, $B0                        ; jumping right
+
+JOE_JUMP_LEFT:
+    DB      $50, $B4                        ; jumping left
+
+JOE_POLE:
+    DB      $64, $C8                        ; pole
+
+JOE_CLIMB:
+    DB      $54, $B8, $58, $BC, $54, $B8, $58, $BC ; ladder
+
+JOE_SWING:
+    DB      $5C, $C0, $60, $C4, $5C, $C0, $60, $C4 ; rope
+
+JOE_LYING:
+    DB      $68, $CC, $68, $D0, $68, $CC, $68, $D0 ; dead from a fall (by $7096)
+
+JOE_ZAPPED_FRAMES:
+    DB      $D8, $D4, $D8, $D4, $E0, $DC, $E0, $DC ; zapped (by the death timer)
+
+; JUMP_ARC ($93AE): DY for each frame of a jump, read from the end.
+JUMP_ARC:
+    DB      $04, $03, $03, $01, $01, $01, $01, $00, $00
+    DB      $00, $00, $00, $FF, $FF, $FF, $FF, $FB, $FB
+
+; ROW_COLOURS ($93C0): colour entries 1-7 for each row of the pyramid (rows 8
+; and down share the last): bricks, ladder tops in floors, the HUD digits
+; (two entries each half) and the fire pit's flames.
+ROW_COLOURS:
+    DB      $F8, $4F, $F0, $F0, $80, $80, $F9 ; row 0
+    DB      $AF, $4A, $A0, $A0, $F0, $F0, $A9 ; row 1
+    DB      $B5, $4B, $B0, $B0, $50, $50, $B9 ; row 2
+    DB      $BC, $4B, $B0, $B0, $C0, $C0, $B9 ; row 3
+    DB      $BD, $4B, $B0, $B0, $E0, $E0, $B9 ; row 4
+    DB      $EC, $4E, $E0, $E0, $C0, $C0, $E9 ; row 5
+    DB      $ED, $4E, $E0, $E0, $D0, $D0, $E9 ; row 6
+    DB      $A7, $4A, $A0, $A0, $70, $70, $A9 ; row 7
+    DB      $E7, $4E, $E0, $E0, $70, $70, $E9 ; row 8 and down
+
+FLOOR_TILES:
+    DB      $08, $10, $11, $05, $04, $06, $B9, $B8, $BA, $C4 ; what Joe stands on: brick, ladder tops, conveyors, a rope's top
+
+GAME_OVER_TEXT:
+    DB      $47, $41, $4D, $45, $00, $4F, $56, $45, $52 ; "GAME OVER", tile 0 for the space
+
+CONVEYOR_TILES:
+    DB      $04, $05, $06, $B9, $B8, $BA    ; pushing left: $04-$06; right: $B9, $B8, $BA
+
+; Item tiles, searched with CPIR: what's left in C gives the item and the
+; tile's corner.
+PICKUP_TILES:
+    DB      $9B, $9A, $97, $96              ; sword
+    DB      $63, $62, $D1, $D0              ; torch
+    DB      $D9, $99, $D8, $98              ; jewel
+    DB      $AF, $A9, $AE, $A8              ; amulet
+
+CREATURE_TILES:
+    DB      $A3, $A2, $A1, $A0              ; creature, both ways
+    DB      $A6, $A7, $A4, $A5
+
+KEY_TILES:
+    DB      $6B, $6A, $69, $68              ; blue key
+    DB      $7B, $7A, $79, $78              ; gold key
+    DB      $73, $72, $71, $70              ; red key
 ; -----------------------------------------------------------------------------
 ; Tiles that stop Joe and the enemies moving sideways.
 ; -----------------------------------------------------------------------------
 WALL_TILES:
 
-    DB      $08, $B0, $BB, $C0, $B7, $9C, $C7, $0B; brick, doors, walls
+    DB      $08, $B0, $BB, $C0, $B7, $9C, $C7, $0B ; brick; closed doors and their bottoms; the HUD box's right edge
 
 ; -----------------------------------------------------------------------------
 ; ROOM DATA
@@ -2800,7 +4452,7 @@ TILE_GROUPS:
     DB      $D5, $D2, $D3, $D4, $D5, $D2, $D3, $D4
     DB      $D5, $D2, $D3, $D4, $D5, $D2, $D3, $D4
     DB      $D5
-HAZARD_TILES:                               ; tiles that kill Joe ($9156)
+HAZARD_TILES:                               ; tiles that kill Joe (IS_HAZARD)
     DB      $D2, $D3, $D4, $D5, $38
 ; +$42 command $1F: rows (count or $FF, tiles)
     DB      $01, $38
@@ -2863,7 +4515,7 @@ HAZARD_TILES:                               ; tiles that kill Joe ($9156)
 ; and the enemy sprites from $7308; $707A counts the enemies.
 ; =============================================================================
 LOAD_ROOM:
-    CALL    SUB_AE77                        ; display off
+    CALL    DISPLAY_OFF                     ; display off
     CALL    TURN_OFF_SOUND
     LD      HL, $7086                       ; enemy objects: 7 x 2 bytes, all $FF (free)
     PUSH    HL
@@ -2919,7 +4571,7 @@ ROOM_LIST_DONE:
     LD      A, ($7195)
     CP      $00
     JR      Z, ROOM_INCLUDE_RETURN
-    CALL    SUB_AB29                        ; mirror rows 5-23
+    CALL    MIRROR_ROOM                     ; mirror the screen (rows 5-22)
 
 ROOM_INCLUDE_RETURN:
     POP     AF                              ; restore $7195 and $7190-$7193,
@@ -2955,7 +4607,7 @@ ROOM_END:
     JR      NZ, ROOM_END_SPRITES
 
 ROOM_END_HUD:
-    CALL    DRAW_INVENTORY                ; draw the inventory
+    CALL    DRAW_INVENTORY                  ; draw the inventory
 
 ; Clear the sprite table from the first sprite after the room's enemies:
 ; $80 - 4 x enemies bytes from $1B08 + 4 x enemies (8 bytes past the
@@ -2975,7 +4627,7 @@ ROOM_END_SPRITES:
     ADD     HL, BC
     XOR     A
     CALL    FILL_VRAM
-    CALL    SUB_AE83                        ; display on
+    CALL    DISPLAY_ON                      ; display on
     RET
 
 ; One command: copy it to $7196-$7199 and look up its tile group.
@@ -3044,7 +4696,7 @@ ROOM_CMD_SHAPE:
     INC     HL
     LD      D, (HL)
     EX      DE, HL
-    CALL    SUB_AE3A                        ; JP (HL)
+    CALL    CALL_HL                         ; JP (HL)
     JP      ROOM_CMD_NEXT
 
 ; $3E/$3F, room: run that room's list first, then carry on with this one.
@@ -3126,7 +4778,7 @@ CLEAR_ROOM_TOP:
     LD      DE, $00A0
     LD      A, $08
     CALL    FILL_VRAM
-    CALL    SUB_AA5D                        ; the HUD's frames
+    CALL    DRAW_HUD_BOXES                  ; the HUD's frames
     RET
 
 ; Shape handlers, by bits 2-4 of the command.
@@ -3194,7 +4846,7 @@ FILL_BLOCK_ROW:
     LD      C, $01
     LD      DE, ($71B0)
     LD      HL, $719B
-    CALL    SUB_AEA7                        ; write C tiles from HL at DE, B times
+    CALL    TILE_ROWS                       ; a row of D tiles
     CALL    NEXT_ROW
     POP     BC
     LD      A, ($71A0)
@@ -3293,7 +4945,7 @@ PUT_DOWN_AT_CMD:
 
 ; Write C tiles from HL at DE, B times down the screen. Returns A = 3.
 PUT_DOWN:
-    CALL    SUB_AA96
+    CALL    TILE_COLUMNS
     LD      A, $03
     RET
 
@@ -3318,13 +4970,13 @@ DRAW_ENDS_ROW:
     LD      C, $01
     LD      A, ($7198)
     LD      B, A
-    CALL    SUB_AEA7
+    CALL    TILE_ROWS
     INC     HL
     DEC     B
-    CALL    SUB_AEA7
+    CALL    TILE_ROWS
     INC     HL
     LD      B, $01
-    CALL    SUB_AEA7
+    CALL    TILE_ROWS
     LD      A, $03
     RET
 
@@ -3353,7 +5005,7 @@ DRAW_ROW_REPEAT:
 DRAW_ROW_PUT:
     INC     HL
     LD      DE, ($71B0)
-    CALL    SUB_AEA7
+    CALL    TILE_ROWS
     LD      A, $03
     RET
 
@@ -3371,7 +5023,7 @@ DRAW_ICON:
     LD      HL, $9FD2
     CALL    TABLE_BYTE                      ; HL = $9FD2 + A
     LD      BC, $0102
-    CALL    SUB_AEA7
+    CALL    TILE_ROWS
     INC     HL
     INC     HL
     PUSH    BC
@@ -3380,7 +5032,7 @@ DRAW_ICON:
     ADD     HL, BC
     EX      DE, HL
     POP     BC
-    CALL    SUB_AEA7
+    CALL    TILE_ROWS
 
 THING_DONE:
     LD      A, $02
@@ -3423,7 +5075,7 @@ DRAW_DOOR:
     ADD     HL, BC
     EX      DE, HL
     LD      BC, $0101
-    CALL    SUB_AEA7
+    CALL    TILE_ROWS
     JR      THING_DONE_JP
 
 ; Write the 2 tiles at $9FD2 + A at $71B0.
@@ -3434,7 +5086,7 @@ PUT_PAIR:
     ADD     HL, BC
     LD      BC, $0102
     LD      DE, ($71B0)
-    CALL    SUB_AEA7
+    CALL    TILE_ROWS
 
 THING_DONE_JP:
     JP      THING_DONE
@@ -3443,6 +5095,9 @@ DRAW_OPEN_DOOR:
     CALL    CMD_POSITION
     LD      A, ($719A)
     ADD     A, $02
+
+; An open door from its drawing at $9FD2 + A, at $71B0 (also ITEM_TASK's).
+DRAW_OPEN_DOOR_AT:
     CALL    PUT_PAIR
     INC     HL
     INC     HL
@@ -3679,1121 +5334,1908 @@ TABLE_BYTE:
     POP     BC
     RET
 
-; Draw the inventory in the HUD: its 10 x 3 background ($85D7) at row 1,
-; column 1, then the icon of each item in $71B2 (up to $FF), 2 columns
-; apart (DRAW_ICON).
+; DRAW_INVENTORY ($A548): redraw the HUD: the score and level, the
+; inventory's 10 x 3 background (zeros at $85D7) at row 1 column 1, the icon
+; of each item in $71B2 (up to $FF) 2 columns apart (DRAW_ICON), then the
+; spare lives.
 DRAW_INVENTORY:
-    CALL    SUB_AEFE
+    CALL    DRAW_SCORE                      ; score and level
     LD      DE, $0021
     LD      HL, $85D7
     LD      BC, $030A
     CALL    PUT_DOWN
     LD      HL, $71B2                       ; the inventory
 
-LOC_A55A:                                   ; LOC_A55A:
-    LD      A, (HL)                         ; A = (HL): read item table entry
-    CP      $FF                             ; CP $FF: end-of-table sentinel?
-    JP      Z, LOC_AABB                     ; JP Z, LOC_AABB: done -> update lives/score display
-    PUSH    HL                              ; PUSH HL (save table pointer)
-    PUSH    DE                              ; PUSH DE (save stride)
+DRAW_INVENTORY_ITEM:
+    LD      A, (HL)
+    CP      $FF
+    JP      Z, DRAW_LIVES                   ; then the lives
+    PUSH    HL
+    PUSH    DE
     CALL    DRAW_ICON                       ; the item's 2x2 icon
-    POP     DE                              ; POP DE
-    INC     DE                              ; INC DE: advance stride by 2
-    INC     DE                              ; INC DE
-    POP     HL                              ; POP HL
-    INC     HL                              ; INC HL: next table entry
-    JR      LOC_A55A                        ; JR LOC_A55A: loop until sentinel
-    DB      $21, $B1, $71, $23, $7E, $FE, $FF, $20 ; inline Z80: LD HL,$71B1 / INC HL / LD A,(HL) ...
-    DB      $FA, $7D, $FE, $B7, $37, $C8, $79, $FE ; inline Z80: CP $FF / JR NZ / LD A,L ...
-    DB      $44, $20, $0F, $21, $00, $10, $22, $BD ; inline Z80: CP $B7 / SCF / RET Z / LD A,C ...
-    DB      $70, $18, $08                   ; inline Z80: CP $44 / JR NZ / LD HL,$1000 ...
+    POP     DE
+    INC     DE
+    INC     DE
+    POP     HL
+    INC     HL
+    JR      DRAW_INVENTORY_ITEM
 
-SUB_A587:
-    CALL    SUB_AF70                        ; CALL SUB_AF70: BCD score add (IY=$7017 -> $7015/$7016/$7017)
-    CALL    SUB_AEFE                        ; CALL SUB_AEFE: refresh score row on VRAM
-    RET                                     ; RET: return from SUB_A587
-    DB      $71, $CD, $48, $A5, $E5, $2A, $BD, $70 ; inline Z80: LD A,C / CALL $A548 / PUSH HL ...
-    DB      $CD, $87, $A5, $E1, $37, $3F, $C9, $3E ; inline Z80: CALL $A587 / POP HL / SCF+CCF / RET ...
-    DB      $06, $32, $49, $70, $21, $5F, $70, $CB ; inline Z80: LD A,$06 / LD ($7049) / LD HL,$705F ...
-    DB      $D6, $CD, $06, $AC, $3E, $FF, $32, $A9 ; inline Z80: CB $D6 / CALL $AC06 / LD A,$FF ...
-    DB      $70, $3E, $01, $32, $AD, $70, $21, $01 ; inline Z80: LD ($70A9) / LD A,$01 / LD ($70AD) ...
-    DB      $00, $22, $E0, $72, $3E, $08, $32, $A8 ; inline Z80: LD HL,$0001 / LD ($72E0) / LD A,$08 ...
-    DB      $71, $CD, $67, $A0, $CD, $7E, $8E, $3E ; inline Z80: LD ($71A8) / CALL $A067 / CALL $8E7E ...
-    DB      $05, $32, $79, $70, $3A, $07, $72, $CB ; inline Z80: LD A,$05 / LD ($7079) / LD A,($7207) ...
-    DB      $7F, $28, $F9, $AF, $32, $07, $72, $21 ; inline Z80: BIT 7 / JR Z / XOR A / LD ($7207) ...
-    DB      $A1, $A8, $5E, $3A, $5F, $70, $CB, $5F ; inline Z80: LD HL,$A8A1 / LD E,(HL) / LD A,($705F)
-    DB      $20, $F8, $23, $56, $7A, $FE, $FF, $28 ; inline Z80: BIT 3 / JR NZ / INC HL / LD E,(HL) ...
-    DB      $E3, $23, $4E, $23, $46, $E5, $C5, $E1 ; inline Z80: LD D,A / CALL $AE3A / JR ...
-    DB      $1A, $FE, $FE, $28, $0D, $FE, $01, $20 ; inline Z80: tail continued
-    DB      $07, $D5, $E5, $CD, $3A, $AE, $E1, $D1 ; inline Z80: continued
-    DB      $1A, $3D, $E1, $23, $FE, $00, $20, $01 ; inline Z80: continued
-    DB      $7E, $12, $23, $18, $CD         ; inline Z80: end of SUB_A587 inline data
+; ADD_ITEM ($A56C): put item C in the inventory and score its points
+; ($70BD). Carry set, and nothing done, if the first free slot is the last
+; one: Joe carries at most 5 items. The jewel isn't kept: it scores 1000.
+ADD_ITEM:
+    LD      HL, $71B1
 
-SUB_A60B:
-    LD      HL, $705F                       ; HL = $705F (game mode flags)
-    RES     3, (HL)                         ; RES 3, (HL): clear bit 3 = room-setup-needed
-    LD      BC, $0182                       ; BC = $0182 (VDP reg 1, value $82 -- display enable)
-    CALL    WRITE_REGISTER                  ; CALL WRITE_REGISTER: enable VDP display
-    LD      BC, $0705                       ; BC = $0705 (VDP reg 7, value $05 -- border/palette)
-    CALL    WRITE_REGISTER                  ; CALL WRITE_REGISTER: set border colour
-    XOR     A                               ; A = $00 (fill value)
-    LD      DE, $0300                       ; DE = $0300 (length: one name table row block)
-    LD      HL, $1800                       ; HL = $1800 (VRAM name table base)
-    CALL    FILL_VRAM                       ; CALL FILL_VRAM: blank $0300 bytes of name table
-    LD      A, ($70AC)                      ; A = ($70AC) room entry mode
-    CP      $01                             ; CP $01
-    JR      Z, LOC_A678                     ; JR Z, LOC_A678: mode $01 = fast path (no enemy placement)
-    LD      HL, ($7047)                     ; HL = ($7047) room data cursor pointer
-    LD      B, $19                          ; B = $19 (25 enemy entries to process)
-    LD      A, H                            ; A = H
-    AND     $AE                             ; AND $AE: mask to enemy-data bank
-    SET     7, A                            ; SET 7, A: set high bit (enemy data at $8000+)
-    LD      H, A                            ; H = A (HL now points into enemy data bank)
+ADD_ITEM_FREE:
+    INC     HL
+    LD      A, (HL)
+    CP      $FF
+    JR      NZ, ADD_ITEM_FREE
+    LD      A, L                            ; the sixth slot?
+    CP      $B7
+    SCF
+    RET     Z
+    LD      A, C                            ; the jewel
+    CP      $44
+    JR      NZ, ADD_ITEM_KEEP
+    LD      HL, $1000
+    LD      ($70BD), HL
+    JR      ADD_ITEM_SCORE
 
-LOC_A638:                                   ; LOC_A638: enemy placement loop
-    PUSH    BC                              ; PUSH BC (save loop counter)
-    LD      A, (HL)                         ; A = (HL): read enemy type byte
-    AND     $07                             ; AND $07: isolate 3-bit type
-    SET     1, A                            ; SET 1, A: set used flag
-    LD      B, A                            ; B = A (tile number)
-    LD      C, $01                          ; C = $01 (attribute flag)
-    INC     HL                              ; INC HL
-    LD      D, $01                          ; D = $01
-    INC     HL                              ; INC HL
-    LD      E, (HL)                         ; E = (HL): load enemy Y position
-    INC     HL                              ; INC HL
-    PUSH    HL                              ; PUSH HL (save room data pointer)
-    PUSH    BC                              ; PUSH BC / POP BC (reload BC = tile/attr)
-    POP     BC                              ; POP BC
-    LD      HL, $A9AD                       ; HL = $A9AD (enemy sprite tile table)
-    CALL    SUB_AA96                        ; CALL SUB_AA96: SET bit 2 WORK_BUFFER -> write enemy sprite to VRAM
-    POP     HL                              ; POP HL (restore room data pointer)
-    POP     BC                              ; POP BC (restore loop counter)
-    DJNZ    LOC_A638                        ; DJNZ LOC_A638: process all 25 enemy entries
-    LD      A, ($71A6)                      ; A = ($71A6) room difficulty
-    SRA     A                               ; SRA A: difficulty / 2
-    ADD     A, $08                          ; ADD A, $08: base count = 8 + difficulty/2
-    LD      B, A                            ; B = A (number of item entries to place)
-    LD      A, ($7047)                      ; A = ($7047) room data ptr lo
-    AND     $1F                             ; AND $1F: item index (5 bits)
-    LD      D, $01                          ; D = $01
-    LD      E, A                            ; E = A (item data)
+; ADD_POINTS ($A587): add HL (BCD) to the score and redraw it.
+ADD_POINTS:
+    CALL    ADD_SCORE
+    CALL    DRAW_SCORE
+    RET
 
-LOC_A664:                                   ; LOC_A664: item placement loop
-    PUSH    BC                              ; PUSH BC (save loop counter)
-    LD      ($71B0), DE                     ; ($71B0) = DE: store current item data
-    LD      A, $44                          ; A = $44 (item tile number)
-    PUSH    DE                              ; PUSH DE
-    CALL    DRAW_ICON                       ; the item's 2x2 icon
-    POP     HL                              ; POP HL
-    LD      BC, $0027                       ; BC = $0027 (39 bytes per item slot)
-    ADD     HL, BC                          ; ADD HL, BC: advance item pointer
-    DB      $EB                             ; DB $EB: EX DE,HL
-    POP     BC                              ; POP BC (restore loop counter)
-    DJNZ    LOC_A664                        ; DJNZ LOC_A664: place all items
+ADD_ITEM_KEEP:
+    LD      (HL), C
 
-LOC_A678:
-    LD      A, ($71A8)                      ; A = ($71A8) room type
-    CP      $0A                             ; CP $0A: outdoor room?
-    JR      Z, LOC_A695                     ; JR Z, LOC_A695: outdoor -> skip door sprites
-    LD      DE, BOOT_UP                     ; DE = BOOT_UP ($0000 -- door tile offset base)
-    LD      HL, $A9AE                       ; HL = $A9AE (door sprite tile table)
-    CP      $0B                             ; CP $0B: check for special room type $0B
-    JR      NZ, LOC_A68F                    ; JR NZ, LOC_A68F: not $0B -> use default door table
-    LD      HL, $A9B0                       ; HL = $A9B0 (special door tile table)
-    LD      DE, $001D                       ; DE = $001D (door stride)
-
-LOC_A68F:                                   ; LOC_A68F:
-    LD      BC, $1803                       ; BC = $1803 (VRAM name table addr $1803)
-    CALL    SUB_AA96                        ; CALL SUB_AA96: write door sprites to VRAM name table
-
-LOC_A695:                                   ; LOC_A695:
-    CALL    SUB_AEFE                        ; CALL SUB_AEFE: VDP address setup (flush score row)
-    LD      BC, $01E2                       ; BC = $01E2 (VDP reg 1, value $E2 -- enable display + sprites)
-    CALL    WRITE_REGISTER                  ; CALL WRITE_REGISTER: enable VDP display with sprites
-    RET                                     ; RET: return after WRITE_REGISTER
-    DB      $E5, $21, $97, $70, $34, $E1, $3A, $97 ; enemy movement inline Z80: PUSH HL / LD HL,$7097 ...
-    DB      $70, $E6, $11, $FE, $00, $20, $02, $37 ; enemy movement inline Z80: LD A,($7070) / AND $11 ...
-    DB      $C9, $37, $3F, $C9, $D1, $D5, $13, $1A ; enemy movement inline Z80: CP $80 / JR Z / INC HL ...
-    DB      $E6, $80, $47, $1A, $E6, $7F, $3D, $F2 ; enemy movement inline Z80: CP $80 / LD A,A ...
-    DB      $C3, $A6, $3E, $05, $80, $12, $E6, $7F ; enemy movement inline Z80: continued ...
-    DB      $FE, $00, $20, $1D, $D1, $E1, $E5, $D5 ; enemy movement inline Z80: JR NZ / LD HL,($7057) ...
-    DB      $23, $23, $23, $7E, $FE, $00, $28, $0C ; enemy movement inline Z80: LD A,($704A) / CP $00 ...
-    DB      $3A, $4A, $70, $FE, $00, $3E, $0C, $28 ; enemy movement inline Z80: CALL $A69F / PUSH HL ...
-    DB      $02, $3E, $0E, $77, $2B, $7E, $EE, $1C ; enemy movement inline Z80: JR NC / LD A,($70AB) ...
-    DB      $77, $21, $5A, $70, $7E, $23, $FE, $10 ; enemy movement inline Z80: JR NZ / CALL $ABEC ...
-    DB      $20, $71, $7E, $FE, $11, $20, $6C, $E1 ; enemy movement inline Z80: CALL $ABCE / CB $BE ...
-    DB      $7E, $CB, $6F, $20, $1E, $CD, $9F, $A6 ; enemy movement inline Z80: CB $EE / JP $A88F ...
-    DB      $E5, $38, $60, $3A, $AB, $70, $FE, $02 ; enemy movement inline Z80: CB $AE / CALL $A69F ...
-    DB      $20, $59, $E1, $CD, $ED, $AB, $E3, $7E ; enemy movement inline Z80: LD A,$08 / JR NC ...
-    DB      $C6, $02, $77, $E1, $CB, $EE, $CB, $FE ; enemy movement inline Z80: LD A,$FE / EX AF ...
-    DB      $C3, $8F, $A8, $CB, $7F, $20, $1C, $CB ; enemy movement inline Z80: LD C,$FF / LD A,($705B)
-    DB      $AE, $CD, $9F, $A6, $3E, $08, $38, $06 ; enemy movement inline Z80: CP $E8 / JR Z / CP $08 ...
-    DB      $7E, $EE, $80, $77, $3E, $FE, $E3, $23 ; enemy movement inline Z80: CALL $A69F / JR NC ...
-    DB      $86, $77, $2B, $7E, $C6, $F9, $77, $E1 ; enemy movement inline Z80: CB $FE / LD B,$FE ...
-    DB      $C3, $8F, $A8, $0E, $FF, $3A, $5B, $70 ; enemy movement inline Z80: LD C,$00 / CB $AE ...
-    DB      $FE, $E8, $28, $04, $FE, $08, $20, $15 ; enemy movement inline Z80: JP $A87F / LD HL,$7057 ...
-    DB      $CD, $9F, $A6, $38, $06, $CB, $FE, $06 ; enemy movement inline Z80: CP $88 / JR NZ / CP $89 ...
-    DB      $FE, $18, $04, $CB, $BE, $06, $08, $0E ; enemy movement inline Z80: JR NZ / LD A,($70AB) ...
-    DB      $00, $CB, $AE, $18, $02, $06, $00, $E3 ; enemy movement inline Z80: CALL NZ / CB $6E ...
-    DB      $C3, $7F, $A8, $21, $57, $70, $7E, $23 ; enemy movement inline Z80: CALL $A69F / PUSH HL ...
-    DB      $FE, $88, $20, $2B, $7E, $FE, $89, $20 ; enemy movement inline Z80: CB $BE / CB $EE / LD A,$00
-    DB      $26, $3A, $AB, $70, $FE, $02, $20, $1F ; enemy movement inline Z80: JR / CB $7E / JR NZ ...
-    DB      $E1, $CB, $6E, $20, $12, $CD, $9F, $A6 ; enemy movement inline Z80: LD BC,$0000 / CB $6E ...
-    DB      $E5, $38, $14, $E1, $CD, $ED, $AB, $CB ; enemy movement inline Z80: JP $A82F / LD HL,$7086 ...
-    DB      $BE, $CB, $EE, $3E, $00, $18, $9F, $CB ; enemy movement inline Z80: CALL NZ / AND $07 ...
-    DB      $7E, $20, $A8, $0E, $01, $18, $C6, $E1 ; enemy movement inline Z80: CALL $A540 / PUSH HL ...
-    DB      $01, $00, $00, $CB, $6E, $20, $F0, $C3 ; enemy movement inline Z80: CALL $5991 / POP HL ...
-    DB      $2F, $A8, $21, $86, $70, $7E, $FE, $FF ; enemy movement inline Z80: CP $15 / JR C ...
-    DB      $C8, $E5, $E6, $07, $CB, $27, $CB, $27 ; enemy movement inline Z80: CB $77 / PUSH HL ...
-    DB      $21, $00, $73, $CD, $40, $A5, $E5, $CD ; enemy movement inline Z80: JR NZ / POP DE ...
-    DB      $59, $91, $E1, $7E, $E3, $FE, $15, $38 ; enemy movement inline Z80: CP $00 / JR Z ...
-    DB      $04, $FE, $B8, $38, $04, $7E, $EE, $80 ; enemy movement inline Z80: CP $0F / JR Z ...
-    DB      $77, $7E, $CB, $77, $E5, $C2, $B3, $A6 ; enemy movement inline Z80: CB $5F / JR NZ ...
-    DB      $E1, $D1, $D5, $F5, $13, $13, $13, $EB ; enemy movement inline Z80: INC HL / LD A,(HL) ...
-    DB      $7E, $FE, $00, $28, $0C, $3A, $4A, $70 ; enemy movement inline Z80: LD (HL),A / LD A,(HL) ...
-    DB      $FE, $00, $3E, $0F, $28, $02, $3E, $0E ; enemy movement inline Z80: CB $7F / LD C,$FC ...
-    DB      $77, $EB, $F1, $CB, $5F, $28, $2F, $23 ; enemy movement inline Z80: LD C,$04 / EX (SP),HL ...
-    DB      $7E, $3C, $77, $2B, $E6, $0F, $FE, $04 ; enemy movement inline Z80: CP $2C / JR NZ / LD A,$0C
-    DB      $20, $24, $23, $7E, $E6, $80, $77, $2B ; enemy movement inline Z80: CP $08 / JR NZ / LD A,$28 ...
-    DB      $7E, $CB, $7F, $0E, $FC, $28, $02, $0E ; enemy movement inline Z80: BIT 0 / JR Z / LD A,($7085)
-    DB      $04, $E3, $E5, $23, $23, $7E, $81, $FE ; enemy movement inline Z80: CP $08 / JR C / CP $F5 ...
-    DB      $2C, $20, $02, $3E, $0C, $FE, $08, $20 ; enemy movement inline Z80: LD A,($705B) / CP $00 ...
-    DB      $02, $3E, $28, $77, $E1, $E3, $7E, $CB ; enemy movement inline Z80: LD A,(HL) / BIT 7 ...
-    DB      $67, $28, $0D, $3A, $85, $70, $FE, $08 ; enemy movement inline Z80: JR NZ / LD A,(HL) / BIT 7
-    DB      $38, $1D, $FE, $F5, $30, $19, $18, $1B ; enemy movement inline Z80: LD C,$00 / JR NZ ...
-    DB      $3A, $5B, $70, $FE, $00, $28, $10, $7E ; enemy movement inline Z80: INC HL / LD A,(HL) ...
-    DB      $CB, $7F, $3A, $57, $70, $20, $03, $3A ; enemy movement inline Z80: LD D,A / LD A,E / AND $7F
-    DB      $59, $70, $CD, $94, $A8, $20, $04, $7E ; enemy movement inline Z80: LD A,$39 / LD (HL),A ...
-    DB      $EE, $80, $77, $7E, $CB, $5F, $0E, $00 ; enemy movement inline Z80: PUSH HL,DE / PUSH HL ...
-    DB      $20, $18, $E5, $23, $7E, $E6, $80, $47 ; enemy movement inline Z80: LD B,$01 / CB $7F ...
-    DB      $7E, $E6, $7F, $3D, $F2, $60, $A8, $3E ; enemy movement inline Z80: CB $7F / JR Z / LD B,A ...
-    DB      $39, $77, $21, $B3, $AB, $CD, $40, $A5 ; enemy movement inline Z80: LD A,(HL) / SUB B ...
-    DB      $4E, $E1, $7E, $E3, $06, $01, $CB, $7F ; enemy movement inline Z80: ADD A,(HL) / LD (HL),A ...
-    DB      $28, $02, $06, $FF, $E3, $23, $7E, $2B ; enemy movement inline Z80: INC HL (x2) / JP $A7A4 ...
-    DB      $E3, $CB, $7F, $28, $03, $78, $80, $47 ; enemy movement inline Z80: CPIR / POP BC / POP HL ...
-    DB      $7E, $91, $77, $23, $7E, $80, $77, $E1 ; enemy movement inline Z80: LD A,($7370) / LD ($705F) ...
-    DB      $FE, $08, $30, $04, $7E, $EE, $80, $77 ; enemy movement inline Z80: LD A,($7001) / LD B,$FF ...
-    DB      $23, $23, $C3, $A4, $A7, $E5, $C5, $21 ; enemy movement inline Z80: LD A,$FF / LD A,$FF (end)
-    DB      $3C, $94, $01, $08, $00, $ED, $B1, $C1 ; enemy movement inline Z80: tail continued
-    DB      $E1, $C9, $73, $70, $E5, $91, $02, $12 ; enemy movement inline Z80: continued
-    DB      $70, $5F, $8F, $04, $68, $70, $D1, $88 ; enemy movement inline Z80: continued
-    DB      $01, $74, $70, $D6, $A8, $01, $FF, $FF ; enemy movement inline Z80: end of enemy movement data
-
-SUB_A8B7:
-    PUSH    HL                              ; PUSH HL
-    LD      HL, $705F                       ; HL = $705F (game mode flags)
-    SET     1, (HL)                         ; SET 1, (HL): set bit 1 = VRAM-write-in-progress (pause game logic)
-    LD      HL, $70AF                       ; HL = $70AF (VRAM nesting counter)
-    INC     (HL)                            ; INC (HL): increment VRAM nesting counter
-    POP     HL                              ; POP HL
-    RET                                     ; RET: return from VRAM-lock enter
-
-SUB_A8C3:
-    PUSH    HL                              ; PUSH HL
-    PUSH    AF                              ; PUSH AF
-    LD      HL, $70AF                       ; HL = $70AF (VRAM nesting counter)
-    DEC     (HL)                            ; DEC (HL): decrement nesting counter
-    LD      A, (HL)                         ; A = (HL)
-    CP      $00                             ; CP $00: fully exited?
-    JR      NZ, LOC_A8D3                    ; JR NZ, LOC_A8D3: still nested -> keep game paused
-    LD      HL, $705F                       ; HL = $705F
-    RES     1, (HL)                         ; RES 1, (HL): clear bit 1 = game logic can resume
-
-LOC_A8D3:
-    POP     AF                              ; POP AF: restore AF
-    POP     HL                              ; POP HL: restore HL
-    RET                                     ; RET: return from SUB_A8C3
-    DB      $3A, $A8, $70, $3D, $20, $02, $3E, $60 ; inline Z80: LD A,($70A8) / DEC A / JR NZ / LD A,$60
-    DB      $32, $A8, $70, $FE, $60, $20, $2E, $21 ; inline Z80: LD ($70A8) / CP $60 / JR NZ / LD HL,$7000
-    DB      $00, $70, $CB, $F6, $21, $CD, $AB, $11 ; inline Z80: SET 6,(HL) / LD HL,$ABCD / LD DE,$001D ...
-    DB      $1D, $00, $CD, $05, $A9, $3A, $A8, $70 ; inline Z80: CALL $A905 / LD A,($70A8) ...
-    DB      $FE, $60, $20, $27, $21, $00, $70, $CB ; inline Z80: CP $60 / JR NZ / LD HL,$7000 / CB $EE ...
-    DB      $EE, $21, $CD, $AB, $11, $1C, $00, $D5 ; inline Z80: LD HL,$ABCD / LD DE,$001C ...
-    DB      $E5, $E1, $D1, $FD, $21, $01, $00, $3E ; inline Z80: PUSH DE / PUSH HL / POP HL / POP DE ...
-    DB      $04, $CD, $2E, $AE, $C9, $FE, $48, $20 ; inline Z80: LD IY,$0001 / LD A,$04 / CALL $AE2E ...
-    DB      $DC, $21, $00, $70, $CB, $B6, $21, $2E ; inline Z80: RET / CP $48 / JR NZ / LD HL,$7000 ...
-    DB      $A9, $18, $CC, $FE, $30, $C0, $21, $00 ; inline Z80: CB $B6 / LD HL,$A92E / JR ...
-    DB      $70, $CB, $AE, $21, $2E, $A9, $18, $D4 ; inline Z80: CP $30 / RET NZ / LD HL,$7000 ...
-    DB      $40                             ; inline Z80: CB $AE / LD HL,$A92E / JR / DB $40
-
-SUB_A92F:
-    CALL    SUB_A8B7                        ; CALL SUB_A8B7: VRAM-lock enter
-    LD      A, ($73F9)                      ; A = ($73F9) SN76489A frequency byte to write
-    LD      ($7085), A                      ; ($7085) = A: cache frequency byte
-    LD      C, $00                          ; C = $00 (frame 0)
-    XOR     A                               ; A = $00 (offset 0)
-    CALL    SUB_A97A                        ; CALL SUB_A97A: write SN76489A frame 0 ($73F9=$00)
-    LD      C, $01                          ; C = $01 (frame 1)
-    LD      A, $08                          ; A = $08
-    CALL    SUB_A97A                        ; CALL SUB_A97A: write SN76489A frame 1 ($73F9=$08)
-    LD      C, $02                          ; C = $02 (frame 2)
-    LD      A, $10                          ; A = $10
-    CALL    SUB_A97A                        ; CALL SUB_A97A: write SN76489A frame 2 ($73F9=$10)
-    LD      C, $05                          ; C = $05 (frame 3)
-    LD      A, $28                          ; A = $28
-    CALL    SUB_A97A                        ; CALL SUB_A97A: write SN76489A frame 3 ($73F9=$28)
-    LD      A, ($7085)                      ; A = ($7085) cached frequency byte
-    CP      $00                             ; CP $00
-    JR      NZ, LOC_A95C                    ; JR NZ, LOC_A95C: nonzero -> check frame 1
-    LD      C, $00                          ; C = $00: frame selector = 0
-
-LOC_A95C:                                   ; LOC_A95C:
-    CP      $08                             ; CP $08
-    JR      NZ, LOC_A962                    ; JR NZ, LOC_A962
-    LD      C, $01                          ; C = $01: frame selector = 1
-
-LOC_A962:                                   ; LOC_A962:
-    CP      $10                             ; CP $10
-    JR      NZ, LOC_A968                    ; JR NZ, LOC_A968
-    LD      C, $02                          ; C = $02: frame selector = 2
-
-LOC_A968:                                   ; LOC_A968:
-    CP      $28                             ; CP $28
-    JR      NZ, LOC_A96E                    ; JR NZ, LOC_A96E
-    LD      C, $05                          ; C = $05: frame selector = 3
-
-LOC_A96E:                                   ; LOC_A96E:
-    LD      ($73F9), A                      ; ($73F9) = A: store final frequency byte
-    LD      B, $04                          ; B = $04 (VDP register 4)
-    CALL    WRITE_REGISTER                  ; CALL WRITE_REGISTER: write VDP register 4 with C value
-    CALL    SUB_A8C3                        ; CALL SUB_A8C3: VRAM-lock exit
-    RET                                     ; RET: return from LOC_A96E
-
-SUB_A97A:
-    LD      ($73F9), A                      ; RAM $73F9
-    LD      B, $04                          ; LD B,$04: B = $04 (VDP register 4)
-    CALL    WRITE_REGISTER                  ; CALL WRITE_REGISTER: write pattern table reg
-    LD      A, ($7096)                      ; RAM $7096
-    PUSH    AF                              ; PUSH AF: save direction index
-    SLA     A                               ; SLA A: index * 2 for pattern offset
-    LD      HL, $85BC                       ; LD HL,$85BC: HL = $85BC (tile pattern data)
-    LD      DE, $00E0                       ; LD DE,$00E0: DE = $00E0 (VRAM dest pattern)
-    CALL    SUB_A9A0                        ; CALL SUB_A9A0: write first pattern block
-    LD      HL, $85CA                       ; LD HL,$85CA: HL = $85CA (second pattern data)
-    LD      DE, $00E8                       ; LD DE,$00E8: DE = $00E8 (VRAM dest second)
-    POP     AF                              ; POP AF: restore direction index
-    AND     $01                             ; AND $01: keep bit 0 (even/odd direction)
-    SLA     A                               ; SLA A: shift for sub-pattern offset
-    SLA     A                               ; SLA A: shift again
-    SLA     A                               ; SLA A: A = sub-pattern offset * 8
-
-SUB_A9A0:
-    CALL    TABLE_BYTE                      ; A = (HL + A)
-    LD      IY, $0001                       ; LD IY,$0001: IY = 1 (byte count for PUT_VRAM)
-    LD      A, $03                          ; LD A,$03: A = $03 (PUT_VRAM mode)
-    CALL    SUB_AE2E                        ; CALL SUB_AE2E: write tile pattern via PUT_VRAM
-    RET                                     ; RET: return from SUB_A9A0
-    DB      $90, $08, $00, $95, $00, $08    ; SUB_A9A0 post-RET: tile VRAM-write params table
+ADD_ITEM_SCORE:
+    CALL    DRAW_INVENTORY                  ; redraw the HUD
+    PUSH    HL
+    LD      HL, ($70BD)
+    CALL    ADD_POINTS
+    POP     HL
+    SCF
+    CCF
+    RET
 
 ; =============================================================================
-; NMI HANDLER -- NMI (~$AA00)
-; Reached via CART_ENTRY JP.  Saves every register (AF, BC, DE, HL, IX, IY
-; and all alternates) before any game work.
-;   $70B1 bit 7: re-entry guard (SET on entry, RES on exit)
-;   $70B1 bit 3: CALL NZ, SUB_919A -- score / game-bit update
-;   $705F bit 1: skip game logic (pause / attract mode)
-;   $705F bit 3: CALL NZ, SUB_A60B -- room renderer + enemy placement
-;   $70B1 bit 4: CALL NZ, DELAY_LOOP_8EB0 -- full per-frame game body
-;   INC ($7097)    frame counter
-;   INC ($7047)    pointer advance (room data cursor)
-;   $7011 (sub-frame counter 1-4): cycle through 4 SN76489A sound frames
-;     via SUB_A92F (write next sound byte to SOUND_PORT)
-;   DEC ($7207)    sprite flicker counter
-;   CALL WR_SPR_NM_TBL  flush sprite name table ($08 sprites)
-;   CALL SUB_AC6D  sound channel sequencer (drives $702C/$702E music data)
-;   LOC_AA45: CALL READ_REGISTER (read VDP status, clear interrupt flag)
-;   RES 7, ($70B1) / RETN
+; NEW_GAME ($A59D): 6 lives (Joe's own included), an empty inventory, and
+; Joe in the entrance hall (row 0, column 8) at the top of the left pole,
+; where the boot left his sprites, about to walk into the pyramid.
+; =============================================================================
+NEW_GAME:
+    LD      A, $06
+    LD      ($7049), A
+    LD      HL, $705F                       ; walk him into the pyramid
+    SET     2, (HL)
+    CALL    EMPTY_INVENTORY
+    LD      A, $FF                          ; no death timer running
+    LD      ($70A9), A
+    LD      A, $01                          ; the first footstep at once
+    LD      ($70AD), A
+    LD      HL, $0001                       ; sprite order: his hat, face and legs in front of his
+    LD      ($72E0), HL                     ; body
+    LD      A, $08                          ; column 8
+    LD      ($71A8), A
+    CALL    LOAD_ROOM
+    CALL    SAVE_JOE                        ; he respawns from here
+    LD      A, $05                          ; state 5: on a pole
+    LD      ($7079), A
+
+; =============================================================================
+; MAIN_LOOP ($A5CA): once a frame (when the frame interrupt has counted the
+; sync byte $7207 below 0), run the tasks in the table at $A8A1. Each task
+; has a countdown: it runs when the count is 1, and the count goes back to
+; the task's period at 0. A count of $FE stops the task. While a treasure
+; screen is set up ($705F bit 3) the loop waits.
+; =============================================================================
+MAIN_LOOP:
+    LD      A, ($7207)
+    BIT     7, A
+    JR      Z, MAIN_LOOP
+    XOR     A
+    LD      ($7207), A                      ; next frame
+    LD      HL, TASKS                       ; the task table
+
+MAIN_LOOP_TASK:
+    LD      E, (HL)                         ; its countdown's address
+    LD      A, ($705F)                      ; (wait while a treasure screen is set up)
+    BIT     3, A
+    JR      NZ, MAIN_LOOP_TASK
+    INC     HL
+    LD      D, (HL)
+    LD      A, D
+    CP      $FF                             ; end of the table
+    JR      Z, MAIN_LOOP
+    INC     HL
+    LD      C, (HL)                         ; its routine
+    INC     HL
+    LD      B, (HL)
+    PUSH    HL
+    PUSH    BC
+    POP     HL
+    LD      A, (DE)                         ; the count
+    CP      $FE
+    JR      Z, MAIN_LOOP_NEXT
+    CP      $01
+    JR      NZ, MAIN_LOOP_COUNT
+    PUSH    DE
+    PUSH    HL
+    CALL    CALL_HL                         ; run it: CALL (HL)
+    POP     HL
+    POP     DE
+
+MAIN_LOOP_COUNT:
+    LD      A, (DE)
+    DEC     A
+
+MAIN_LOOP_NEXT:
+    POP     HL
+    INC     HL
+    CP      $00
+    JR      NZ, MAIN_LOOP_STORE
+    LD      A, (HL)                         ; back to the period
+
+MAIN_LOOP_STORE:
+    LD      (DE), A
+    INC     HL
+    JR      MAIN_LOOP_TASK
+
+; =============================================================================
+; TREASURE_SCREEN ($A60B): the frame interrupt sets up a screen of the
+; treasure room ($705F bit 3). Display off, a blue backdrop, an empty screen.
+; While the room's time runs, 25 chains and a diagonal line of jewels,
+; placed by reading the ROM at the pointer $7047 (which the frame interrupt
+; moves every frame) for random numbers. Columns 9 and 11 get a wall and a
+; pole down one side. Then the score, and the display back on.
+; =============================================================================
+TREASURE_SCREEN:
+    LD      HL, $705F
+    RES     3, (HL)
+    LD      BC, $0182                       ; display off
+    CALL    WRITE_REGISTER
+    LD      BC, $0705                       ; register 7 = $05: dark blue backdrop
+    CALL    WRITE_REGISTER
+    XOR     A                               ; clear the screen
+    LD      DE, $0300
+    LD      HL, $1800
+    CALL    FILL_VRAM
+    LD      A, ($70AC)                      ; time up: no chains or jewels
+    CP      $01
+    JR      Z, TREASURE_SIDE
+    LD      HL, ($7047)                     ; the pointer, kept within $8000-$AFFF
+    LD      B, $19
+    LD      A, H
+    AND     $AE
+    SET     7, A
+    LD      H, A
+
+TREASURE_CHAIN:
+    PUSH    BC
+    LD      A, (HL)                         ; a chain 2, 3, 6 or 7 tiles long, at name
+    AND     $07
+    SET     1, A
+    LD      B, A
+    LD      C, $01
+    INC     HL
+    LD      D, $01                          ; position $100 (row 8) + the third byte
+    INC     HL
+    LD      E, (HL)
+    INC     HL
+    PUSH    HL
+    PUSH    BC
+    POP     BC
+    LD      HL, TREASURE_TILES              ; the chain tile, rows 32 apart
+    CALL    TILE_COLUMNS
+    POP     HL
+    POP     BC
+    DJNZ    TREASURE_CHAIN
+    LD      A, ($71A6)                      ; jewels: 8 + level / 2 of them
+    SRA     A
+    ADD     A, $08
+    LD      B, A
+    LD      A, ($7047)                      ; from row 8, a random column
+    AND     $1F
+    LD      D, $01
+    LD      E, A
+
+TREASURE_JEWEL:
+    PUSH    BC
+    LD      ($71B0), DE
+    LD      A, $44                          ; the jewel's icon
+    PUSH    DE
+    CALL    DRAW_ICON
+    POP     HL
+    LD      BC, $0027                       ; down a row, 7 columns right
+    ADD     HL, BC
+    EX      DE, HL
+    POP     BC
+    DJNZ    TREASURE_JEWEL
+
+TREASURE_SIDE:
+    LD      A, ($71A8)                      ; column 10, the shaft: no wall
+    CP      $0A
+    JR      Z, TREASURE_DONE
+    LD      DE, $0000                       ; column 9: brick, gap, pole on the left
+    LD      HL, TREASURE_LEFT_WALL
+    CP      $0B                             ; column 11: pole, gap, brick on the right
+    JR      NZ, TREASURE_WALL
+    LD      HL, TREASURE_RIGHT_WALL
+    LD      DE, $001D
+
+TREASURE_WALL:
+    LD      BC, $1803                       ; 24 rows of 3
+    CALL    TILE_COLUMNS
+
+TREASURE_DONE:
+    CALL    DRAW_SCORE
+    LD      BC, $01E2                       ; display on
+    CALL    WRITE_REGISTER
+    RET
+
+; CLIMBER_TICK ($A69F): count the frame counter on (it's shared with the
+; frame interrupt); carry set when ($7097 AND $11) is 0. The climbers use it
+; as a coin toss.
+CLIMBER_TICK:
+    PUSH    HL
+    LD      HL, $7097
+    INC     (HL)
+    POP     HL
+    LD      A, ($7097)
+    AND     $11
+    CP      $00
+    JR      NZ, CLIMBER_TICK_NO
+    SCF
+    RET
+
+CLIMBER_TICK_NO:
+    SCF
+    CCF
+    RET
+
+; MOVE_CLIMBER ($A6B3): an enemy that walks and climbs ladders (flag $40;
+; the spider). Its counter's low 7 bits animate it every 6th frame
+; (pattern XOR $1C: the mirror image), green, or grey while the amulet
+; protects Joe. On the stack: the object, then its sprite entry. Flags:
+; $20 on a ladder, $80 moving left (on a ladder: down).
+MOVE_CLIMBER:
+    POP     DE
+    PUSH    DE
+    INC     DE                              ; the counter: 5, 4, ... 0, keeping the fast bit
+    LD      A, (DE)
+    AND     $80
+    LD      B, A
+    LD      A, (DE)
+    AND     $7F
+    DEC     A
+    JP      P, LOC_A6C3
+    LD      A, $05
+
+LOC_A6C3:
+    ADD     A, B
+    LD      (DE), A
+    AND     $7F
+    CP      $00
+    JR      NZ, CLIMBER_LADDER_TOP
+    POP     DE                              ; animation step: the colour, if it's shown,
+    POP     HL
+    PUSH    HL
+    PUSH    DE
+    INC     HL
+    INC     HL
+    INC     HL
+    LD      A, (HL)
+    CP      $00
+    JR      Z, CLIMBER_FRAME
+    LD      A, ($704A)                      ; green or grey
+    CP      $00
+    LD      A, $0C
+    JR      Z, CLIMBER_COLOUR
+    LD      A, $0E
+
+CLIMBER_COLOUR:
+    LD      (HL), A
+
+CLIMBER_FRAME:
+    DEC     HL                              ; and the other frame
+    LD      A, (HL)
+    XOR     $1C
+    LD      (HL), A
+
+CLIMBER_LADDER_TOP:
+    LD      HL, $705A                       ; the top of a ladder at its feet?
+    LD      A, (HL)
+    INC     HL
+    CP      $10
+    JR      NZ, CLIMBER_LADDER_UP
+    LD      A, (HL)
+    CP      $11
+    JR      NZ, CLIMBER_LADDER_UP
+    POP     HL                              ; on the ladder already?
+    LD      A, (HL)
+    BIT     5, A
+    JR      NZ, CLIMBER_AT_TOP
+    CALL    CLIMBER_TICK                    ; no: unless CLIMBER_TICK carries, and only when
+    PUSH    HL
+    JR      C, CLIMBER_LADDER_UP
+    LD      A, ($70AB)                      ; $70AB is 2, step down onto it
+    CP      $02
+    JR      NZ, CLIMBER_LADDER_UP
+    POP     HL
+    CALL    ALIGN_ENEMY                     ; snap onto the ladder
+    EX      (SP), HL
+    LD      A, (HL)                         ; 2 lines down
+    ADD     A, $02
+    LD      (HL), A
+    POP     HL
+    SET     5, (HL)                         ; on the ladder, going down
+    SET     7, (HL)
+    JP      ENEMY_NEXT
+
+CLIMBER_AT_TOP:
+    BIT     7, A                            ; climbing up: off the ladder at the top, sideways:
+    JR      NZ, CLIMBER_DOWN
+    RES     5, (HL)                         ; 8 pixels right, or 2 left (turning round)
+    CALL    CLIMBER_TICK
+    LD      A, $08
+    JR      C, CLIMBER_SHIFT
+    LD      A, (HL)
+    XOR     $80
+    LD      (HL), A
+    LD      A, $FE
+
+CLIMBER_SHIFT:
+    EX      (SP), HL                        ; X + A, Y - 7
+    INC     HL
+    ADD     A, (HL)
+    LD      (HL), A
+    DEC     HL
+    LD      A, (HL)
+    ADD     A, $F9
+    LD      (HL), A
+    POP     HL
+    JP      ENEMY_NEXT
+
+; Climbing down: off the ladder at the floor (a brick or a
+; disappearing floor), going right or left; else 1 line down.
+CLIMBER_DOWN:
+    LD      C, $FF                          ; Y + 1
+    LD      A, ($705B)
+    CP      $E8
+    JR      Z, LOC_A747
+    CP      $08
+    JR      NZ, CLIMBER_MOVE_Y
+
+LOC_A747:
+    CALL    CLIMBER_TICK                    ; off at the bottom: CLIMBER_TICK picks the way,
+    JR      C, CLIMBER_OFF_RIGHT
+    SET     7, (HL)                         ; left (2 pixels),
+    LD      B, $FE
+    JR      CLIMBER_OFF
+
+CLIMBER_OFF_RIGHT:
+    RES     7, (HL)                         ; or right (8 pixels)
+    LD      B, $08
+
+CLIMBER_OFF:
+    LD      C, $00
+    RES     5, (HL)
+    JR      CLIMBER_MOVE
+
+CLIMBER_MOVE_Y:
+    LD      B, $00
+
+CLIMBER_MOVE:
+    EX      (SP), HL
+    JP      ENEMY_SHIFT
+
+CLIMBER_LADDER_UP:
+    LD      HL, $7057                       ; a ladder going up from its body?
+    LD      A, (HL)
+    INC     HL
+    CP      $88
+    JR      NZ, CLIMBER_WALK
+    LD      A, (HL)
+    CP      $89
+    JR      NZ, CLIMBER_WALK
+    LD      A, ($70AB)                      ; and $70AB is 2
+    CP      $02
+    JR      NZ, CLIMBER_WALK
+    POP     HL
+    BIT     5, (HL)                         ; not on it yet: take it unless CLIMBER_TICK carries
+    JR      NZ, CLIMBER_ON_LADDER
+    CALL    CLIMBER_TICK
+    PUSH    HL
+    JR      C, CLIMBER_WALK
+    POP     HL
+    CALL    ALIGN_ENEMY                     ; snap onto it, going up
+    RES     7, (HL)
+    SET     5, (HL)
+    LD      A, $00                          ; Y - 7
+    JR      CLIMBER_SHIFT
+
+CLIMBER_ON_LADDER:
+    BIT     7, (HL)                         ; on a ladder: down, or 1 line up
+    JR      NZ, CLIMBER_DOWN
+    LD      C, $01
+    JR      CLIMBER_MOVE_Y
+
+CLIMBER_WALK:
+    POP     HL                              ; not at a ladder: carry on climbing, or walk
+    LD      BC, $0000
+    BIT     5, (HL)
+    JR      NZ, CLIMBER_ON_LADDER
+    JP      ENEMY_EDGE
+
+; =============================================================================
+; MOVE_ENEMIES ($A7A1): move every enemy one frame. An object at $7086 is 2
+; bytes, up to $FF: flags with its sprite slot in bits 0-2, and a counter
+; (bit 7: fast). Flags: $08 rolls (the skulls' frames; climbers have it too,
+; which keeps them off the bounce arc), $10 bounces between the screen's
+; sides, $40 climbs ladders ($20: on one), $80 moving left. Each reads the
+; tiles around its feet like Joe (READ_TILES), turns near the top and
+; bottom of the screen, at a wall or the end of its floor (or, bouncing, at
+; the sides), and turns again within 8 pixels of the left edge.
+; =============================================================================
+MOVE_ENEMIES:
+    LD      HL, $7086
+
+MOVE_ENEMIES_NEXT:
+    LD      A, (HL)
+    CP      $FF
+    RET     Z
+    PUSH    HL
+    AND     $07                             ; its sprite entry
+    SLA     A
+    SLA     A
+    LD      HL, $7300
+    CALL    TABLE_BYTE
+    PUSH    HL
+    CALL    READ_TILES                      ; the tiles around its feet
+    POP     HL
+    LD      A, (HL)
+    EX      (SP), HL
+    CP      $15                             ; Y outside $15-$B7: turn round
+    JR      C, ENEMY_TURN_Y
+    CP      $B8
+    JR      C, ENEMY_KIND
+
+ENEMY_TURN_Y:
+    LD      A, (HL)
+    XOR     $80
+    LD      (HL), A
+
+ENEMY_KIND:
+    LD      A, (HL)
+    BIT     6, A                            ; a climber
+    PUSH    HL
+    JP      NZ, MOVE_CLIMBER
+    POP     HL
+    POP     DE
+    PUSH    DE
+    PUSH    AF
+    INC     DE                              ; white, or grey while the amulet protects Joe,
+    INC     DE
+    INC     DE
+    EX      DE, HL
+    LD      A, (HL)                         ; if it's shown
+    CP      $00
+    JR      Z, ENEMY_ROLL
+    LD      A, ($704A)
+    CP      $00
+    LD      A, $0F
+    JR      Z, ENEMY_COLOUR
+    LD      A, $0E
+
+ENEMY_COLOUR:
+    LD      (HL), A
+
+ENEMY_ROLL:
+    EX      DE, HL
+    POP     AF
+    BIT     3, A                            ; rolling: every 4th frame the next pattern
+    JR      Z, ENEMY_WALK
+    INC     HL
+    LD      A, (HL)
+    INC     A
+    LD      (HL), A
+    DEC     HL
+    AND     $0F
+    CP      $04
+    JR      NZ, ENEMY_WALK
+    INC     HL                              ; the counter back to 0, keeping the fast bit
+    LD      A, (HL)
+    AND     $80
+    LD      (HL), A
+    DEC     HL
+    LD      A, (HL)                         ; a frame back (-4) going right, on (+4) going left
+    BIT     7, A
+    LD      C, $FC
+    JR      Z, ENEMY_ROLL_STEP
+    LD      C, $04
+
+ENEMY_ROLL_STEP:
+    EX      (SP), HL
+    PUSH    HL
+    INC     HL
+    INC     HL
+    LD      A, (HL)
+    ADD     A, C
+    CP      $2C                             ; $0C-$28, round and round
+    JR      NZ, ENEMY_ROLL_WRAP
+    LD      A, $0C
+
+ENEMY_ROLL_WRAP:
+    CP      $08
+    JR      NZ, ENEMY_ROLL_SET
+    LD      A, $28
+
+ENEMY_ROLL_SET:
+    LD      (HL), A
+    POP     HL
+    EX      (SP), HL
+
+ENEMY_WALK:
+    LD      A, (HL)                         ; bouncing between the sides: turn at X < 8 or
+    BIT     4, A
+    JR      Z, ENEMY_EDGE
+    LD      A, ($7085)                      ; X >= $F5
+    CP      $08
+    JR      C, ENEMY_TURN
+    CP      $F5
+    JR      NC, ENEMY_TURN
+    JR      ENEMY_STEP
+
+ENEMY_EDGE:
+    LD      A, ($705B)                      ; nothing under its feet, or a wall ahead: turn
+    CP      $00
+    JR      Z, ENEMY_TURN
+    LD      A, (HL)
+    BIT     7, A
+    LD      A, ($7057)
+    JR      NZ, ENEMY_WALL
+    LD      A, ($7059)
+
+ENEMY_WALL:
+    CALL    IS_WALL
+    JR      NZ, ENEMY_STEP
+
+ENEMY_TURN:
+    LD      A, (HL)
+    XOR     $80
+    LD      (HL), A
+
+ENEMY_STEP:
+    LD      A, (HL)                         ; not rolling: it bounces, DY from the arc at $ABB3
+    BIT     3, A
+    LD      C, $00
+    JR      NZ, ENEMY_DX
+    PUSH    HL                              ; (read backwards; the counter loses its fast bit)
+    INC     HL
+    LD      A, (HL)
+    AND     $80
+    LD      B, A
+    LD      A, (HL)
+    AND     $7F
+    DEC     A
+    JP      P, ENEMY_ARC
+    LD      A, $39
+
+ENEMY_ARC:
+    LD      (HL), A
+    LD      HL, BOUNCE_ARC
+    CALL    TABLE_BYTE
+    LD      C, (HL)
+    POP     HL
+
+ENEMY_DX:
+    LD      A, (HL)                         ; DX 1, or -1 going left; twice that if fast
+    EX      (SP), HL
+    LD      B, $01
+    BIT     7, A
+    JR      Z, ENEMY_FAST
+    LD      B, $FF
+
+ENEMY_FAST:
+    EX      (SP), HL
+    INC     HL
+    LD      A, (HL)
+    DEC     HL
+    EX      (SP), HL
+    BIT     7, A
+    JR      Z, ENEMY_SHIFT
+    LD      A, B
+    ADD     A, B
+    LD      B, A
+
+ENEMY_SHIFT:
+    LD      A, (HL)                         ; Y - C, X + B
+    SUB     C
+    LD      (HL), A
+    INC     HL
+    LD      A, (HL)
+    ADD     A, B
+    LD      (HL), A
+    POP     HL
+    CP      $08                             ; within 8 pixels of the left edge: turn
+    JR      NC, ENEMY_NEXT
+    LD      A, (HL)
+    XOR     $80
+    LD      (HL), A
+
+ENEMY_NEXT:
+    INC     HL
+    INC     HL
+    JP      MOVE_ENEMIES_NEXT
+
+; IS_WALL ($A894): Z if tile A stops Joe and the enemies moving sideways.
+IS_WALL:
+    PUSH    HL
+    PUSH    BC
+    LD      HL, WALL_TILES
+    LD      BC, $0008
+    CPIR
+    POP     BC
+    POP     HL
+    RET
+
+; The main loop's tasks: the countdown's address, the routine, the period
+; in frames. Each countdown starts at 2 ($81B5).
+TASKS:
+    DW      $7073                           ; CONTACT_TASK, every 2 frames
+    DW      CONTACT_TASK
+    DB      $02
+    DW      $7012                           ; ITEM_TASK, every 4
+    DW      ITEM_TASK
+    DB      $04
+    DW      $7068                           ; MOVE_TASK, every frame
+    DW      MOVE_TASK
+    DB      $01
+    DW      $7074                           ; BARRIER_TASK, every frame
+    DW      BARRIER_TASK
+    DB      $01
+    DB      $FF, $FF                        ; end
+
+; VRAM_LOCK ($A8B7), VRAM_UNLOCK ($A8C3): nest around writes to video memory.
+; While locked ($705F bit 1) the frame interrupt does nothing but
+; acknowledge the video chip.
+VRAM_LOCK:
+    PUSH    HL
+    LD      HL, $705F
+    SET     1, (HL)
+    LD      HL, $70AF
+    INC     (HL)
+    POP     HL
+    RET
+
+VRAM_UNLOCK:
+    PUSH    HL
+    PUSH    AF
+    LD      HL, $70AF
+    DEC     (HL)
+    LD      A, (HL)
+    CP      $00
+    JR      NZ, VRAM_UNLOCK_DONE
+    LD      HL, $705F
+    RES     1, (HL)
+
+VRAM_UNLOCK_DONE:
+    POP     AF
+    POP     HL
+    RET
+
+; =============================================================================
+; BARRIER_TASK ($A8D6): main-loop task, every frame. $70A8 counts 96 frames
+; ($60 down to 1): at $60 the disappearing floors go (colour entry 29 black,
+; $7000 bit 6) and the barriers go off (entry 28 black, bit 5); at $48 the
+; floors come back, at $30 the barriers ($40: dark blue).
+; =============================================================================
+BARRIER_TASK:
+    LD      A, ($70A8)
+    DEC     A
+    JR      NZ, BARRIER_COUNT
+    LD      A, $60
+
+BARRIER_COUNT:
+    LD      ($70A8), A
+    CP      $60
+    JR      NZ, BARRIER_FLOORS
+    LD      HL, $7000                       ; floors gone
+    SET     6, (HL)
+    LD      HL, BLACK                       ; black
+
+SET_FLOOR_COLOUR:
+    LD      DE, $001D
+    CALL    SET_COLOUR
+
+BARRIER_CHECK:
+    LD      A, ($70A8)
+    CP      $60
+    JR      NZ, BARRIER_ON
+    LD      HL, $7000                       ; barriers off
+    SET     5, (HL)
+    LD      HL, BLACK
+
+SET_BARRIER_COLOUR:
+    LD      DE, $001C
+
+SET_COLOUR:
+    PUSH    DE                              ; (swaps nothing)
+    PUSH    HL
+    POP     HL
+    POP     DE
+    LD      IY, $0001                       ; colour entry DE = (HL)
+    LD      A, $04
+    CALL    PUT_VRAM_LOCKED
+    RET
+
+BARRIER_FLOORS:
+    CP      $48
+    JR      NZ, BARRIER_CHECK
+    LD      HL, $7000                       ; floors back
+    RES     6, (HL)
+    LD      HL, SHOWN_COLOUR
+    JR      SET_FLOOR_COLOUR
+
+BARRIER_ON:
+    CP      $30
+    RET     NZ
+    LD      HL, $7000                       ; barriers on
+    RES     5, (HL)
+    LD      HL, SHOWN_COLOUR
+    JR      SET_BARRIER_COLOUR
+
+SHOWN_COLOUR:
+    DB      $40                             ; dark blue
+
+; BARRIER_PATTERNS ($A92F): redraw the barrier ($E0) and disappearing floor
+; ($E8) patterns in all four pattern tables for frame $7096, then point the
+; video chip back at the table $73F9 names.
+BARRIER_PATTERNS:
+    CALL    VRAM_LOCK
+    LD      A, ($73F9)                      ; the table to show
+    LD      ($7085), A
+    LD      C, $00
+    XOR     A
+    CALL    FRAME_PATTERNS
+    LD      C, $01
+    LD      A, $08
+    CALL    FRAME_PATTERNS
+    LD      C, $02
+    LD      A, $10
+    CALL    FRAME_PATTERNS
+    LD      C, $05
+    LD      A, $28
+    CALL    FRAME_PATTERNS
+    LD      A, ($7085)
+    CP      $00
+    JR      NZ, BARRIER_PATTERNS_1
+    LD      C, $00
+
+BARRIER_PATTERNS_1:
+    CP      $08
+    JR      NZ, BARRIER_PATTERNS_2
+    LD      C, $01
+
+BARRIER_PATTERNS_2:
+    CP      $10
+    JR      NZ, BARRIER_PATTERNS_5
+    LD      C, $02
+
+BARRIER_PATTERNS_5:
+    CP      $28
+    JR      NZ, BARRIER_PATTERNS_SHOW
+    LD      C, $05
+
+BARRIER_PATTERNS_SHOW:
+    LD      ($73F9), A
+    LD      B, $04                          ; register 4
+    CALL    WRITE_REGISTER
+    CALL    VRAM_UNLOCK
+    RET
+
+; Pattern table C (high byte A): the barrier's 8 bytes from 2 x $7096
+; into GFX_BARRIER, the floor's from 8 x ($7096 AND 1) into
+; GFX_DISAPPEARING.
+FRAME_PATTERNS:
+    LD      ($73F9), A
+    LD      B, $04
+    CALL    WRITE_REGISTER
+    LD      A, ($7096)
+    PUSH    AF
+    SLA     A
+    LD      HL, GFX_BARRIER
+    LD      DE, $00E0
+    CALL    PUT_PATTERN
+    LD      HL, GFX_DISAPPEARING
+    LD      DE, $00E8
+    POP     AF
+    AND     $01
+    SLA     A
+    SLA     A
+    SLA     A
+
+; PUT_PATTERN ($A9A0): tile pattern DE from HL + A.
+PUT_PATTERN:
+    CALL    TABLE_BYTE
+    LD      IY, $0001
+    LD      A, $03
+    CALL    PUT_VRAM_LOCKED
+    RET
+
+; Treasure room tiles: the chain, then a wall's three columns, left of the
+; screen and (overlapping) right.
+TREASURE_TILES:
+    DB      $90                             ; a chain
+
+TREASURE_LEFT_WALL:
+    DB      $08, $00                        ; brick, nothing,
+
+TREASURE_RIGHT_WALL:
+    DB      $95, $00, $08                   ; pole (left wall); pole, nothing, brick (right wall)
+
+; =============================================================================
+; NMI ($A9B3): the frame interrupt, at every vertical blank. Unless it
+; interrupts itself ($70B1 bit 7): load a room ($70B1 bit 3,
+; LOAD_ROOM_NOW); then, unless it interrupts a write to video memory ($705F
+; bit 1): set up a treasure screen ($705F bit 3), recolour the room ($70B1
+; bit 4, ROOM_COLOURS); count the
+; frame counter $7097 and the treasure room's pointer $7047; take the next
+; tile animation step if the item task has allowed it ($7011 bit 7 clear):
+; pattern tables 0, 1, 2, 5 in turn, with the barrier patterns redrawn;
+; count down the main loop's sync byte $7207; copy the sprites to the video
+; chip; and play the sound effect. Then acknowledge the video chip.
 ; =============================================================================
 NMI:
-    PUSH    AF                              ; PUSH AF: save main register set
-    PUSH    BC                              ; PUSH BC
-    PUSH    DE                              ; PUSH DE
-    PUSH    HL                              ; PUSH HL
-    PUSH    IX                              ; PUSH IX
-    PUSH    IY                              ; PUSH IY
-    EX      AF, AF'                         ; EX AF, AF: swap to alternate A/F
-    EXX                                     ; EXX: swap to alternate BC/DE/HL
-    PUSH    AF                              ; PUSH AF: save alternate AF
-    PUSH    BC                              ; PUSH BC: save alternate BC
-    PUSH    DE                              ; PUSH DE: save alternate DE
-    PUSH    HL                              ; PUSH HL: save alternate HL
-    LD      HL, $70B1                       ; HL = $70B1 (NMI flag byte)
-    BIT     7, (HL)                         ; BIT 7, (HL): re-entry guard
-    JP      NZ, LOC_AA4D                    ; JP NZ, LOC_AA4D: already in NMI -> skip to exit (prevents re-entry)
-    SET     7, (HL)                         ; SET 7, (HL): mark NMI in-progress
-    BIT     3, (HL)                         ; BIT 3, (HL): score-update pending?
-    RES     3, (HL)                         ; RES 3, (HL): clear score-update flag
-    CALL    NZ, SUB_919A                    ; CALL NZ, SUB_919A: score update (SET WORK_BUFFER bit 0, clear room data)
-    LD      A, ($705F)                      ; A = ($705F) game mode flags
-    BIT     1, A                            ; BIT 1, A: pause flag
-    JR      NZ, LOC_AA45                    ; JR NZ, LOC_AA45: paused -> skip all game logic
-    BIT     3, A                            ; BIT 3, A: room-setup needed?
-    CALL    NZ, SUB_A60B                    ; CALL NZ, SUB_A60B: yes -> room renderer + enemy placement
-    LD      HL, $70B1                       ; HL = $70B1
-    BIT     4, (HL)                         ; BIT 4, (HL): frame-body pending?
-    RES     4, (HL)                         ; RES 4, (HL): clear frame-body flag
-    CALL    NZ, DELAY_LOOP_8EB0             ; CALL NZ, DELAY_LOOP_8EB0: run full per-frame game body
-    LD      HL, $7097                       ; HL = $7097 (frame counter)
-    INC     (HL)                            ; INC (HL): increment frame counter each NMI
-    LD      HL, ($7047)                     ; HL = ($7047) room data cursor
-    INC     HL                              ; INC HL: advance room data cursor
-    LD      ($7047), HL                     ; ($7047) = HL: store updated cursor
-    LD      A, ($7011)                      ; A = ($7011) sub-frame counter (1-4)
-    INC     A                               ; INC A
-    BIT     7, A                            ; BIT 7, A: wrapped past 4?
-    JR      NZ, LOC_AA39                    ; JR NZ, LOC_AA39: counter wrapped -> reset + final sound frame
-    LD      ($7011), A                      ; ($7011) = A: store incremented sub-frame counter
-    CP      $01                             ; CP $01
-    JR      NZ, LOC_AA08                    ; JR NZ, LOC_AA08: not frame 1
-    LD      BC, $0400                       ; BC = $0400 (sound frame 0 params)
-    XOR     A                               ; A = $00 (sound frequency sub-byte 0)
-    JR      LOC_AA2C                        ; JR LOC_AA2C
+    PUSH    AF
+    PUSH    BC
+    PUSH    DE
+    PUSH    HL
+    PUSH    IX
+    PUSH    IY
+    EX      AF, AF'
+    EXX
+    PUSH    AF
+    PUSH    BC
+    PUSH    DE
+    PUSH    HL
+    LD      HL, $70B1                       ; interrupting itself: just return
+    BIT     7, (HL)
+    JP      NZ, NMI_RETURN
+    SET     7, (HL)                         ; busy
+    BIT     3, (HL)                         ; load a room?
+    RES     3, (HL)
+    CALL    NZ, LOAD_ROOM_NOW
+    LD      A, ($705F)                      ; a video memory write in progress?
+    BIT     1, A
+    JR      NZ, NMI_ACK
+    BIT     3, A                            ; a treasure screen?
+    CALL    NZ, TREASURE_SCREEN
+    LD      HL, $70B1                       ; recolour?
+    BIT     4, (HL)
+    RES     4, (HL)
+    CALL    NZ, ROOM_COLOURS
+    LD      HL, $7097                       ; the frame counter
+    INC     (HL)
+    LD      HL, ($7047)                     ; the treasure room's random pointer
+    INC     HL
+    LD      ($7047), HL
+    LD      A, ($7011)                      ; the animation step, unless the item task hasn't
+    INC     A
+    BIT     7, A                            ; cleared bit 7 since the last
+    JR      NZ, NMI_SPRITES
+    LD      ($7011), A
+    CP      $01                             ; step 1: table 0 ($0000) (B, C: unused)
+    JR      NZ, ANIM_STEP_2
+    LD      BC, $0400
+    XOR     A
+    JR      ANIM_STEP
 
-LOC_AA08:                                   ; LOC_AA08:
-    CP      $02                             ; CP $02
-    JR      NZ, LOC_AA13                    ; JR NZ, LOC_AA13: not frame 2
-    LD      BC, $0401                       ; BC = $0401 (sound frame 1)
-    LD      A, $08                          ; A = $08
-    JR      LOC_AA2C                        ; JR LOC_AA2C
+ANIM_STEP_2:
+    CP      $02                             ; step 2: table 1 ($0800)
+    JR      NZ, ANIM_STEP_3
+    LD      BC, $0401
+    LD      A, $08
+    JR      ANIM_STEP
 
-LOC_AA13:                                   ; LOC_AA13:
-    CP      $03                             ; CP $03
-    JR      NZ, LOC_AA1E                    ; JR NZ, LOC_AA1E: not frame 3
-    LD      BC, $0402                       ; BC = $0402 (sound frame 2)
-    LD      A, $10                          ; A = $10
-    JR      LOC_AA2C                        ; JR LOC_AA2C
+ANIM_STEP_3:
+    CP      $03                             ; step 3: table 2 ($1000)
+    JR      NZ, ANIM_STEP_4
+    LD      BC, $0402
+    LD      A, $10
+    JR      ANIM_STEP
 
-LOC_AA1E:                                   ; LOC_AA1E:
-    CP      $04                             ; CP $04
-    JR      NZ, LOC_AA39                    ; JR NZ, LOC_AA39: not frame 4 -> skip
-    LD      HL, $7011                       ; HL = $7011
-    LD      (HL), $00                       ; (HL) = $00: reset sub-frame counter
-    LD      BC, $0405                       ; BC = $0405 (sound frame 3 params)
-    LD      A, $28                          ; A = $28 (sound frequency sub-byte 3)
+ANIM_STEP_4:
+    CP      $04                             ; step 4: table 5 ($2800), and round again
+    JR      NZ, NMI_SPRITES
+    LD      HL, $7011
+    LD      (HL), $00
+    LD      BC, $0405
+    LD      A, $28
 
-LOC_AA2C:                                   ; LOC_AA2C:
-    LD      ($73F9), A                      ; ($73F9) = A: store SN76489A frequency byte
-    CALL    SUB_A92F                        ; CALL SUB_A92F: write SN76489A sound frame (4-frame cycle)
-    LD      HL, $7011                       ; HL = $7011
-    LD      A, (HL)                         ; A = (HL) sub-frame counter
-    XOR     $80                             ; XOR $80: toggle bit 7 (mark frame written)
-    LD      (HL), A                         ; (HL) = A
+ANIM_STEP:
+    LD      ($73F9), A                      ; the table to show
+    CALL    BARRIER_PATTERNS                ; barrier patterns, and the table
+    LD      HL, $7011                       ; bit 7: wait for the item task
+    LD      A, (HL)
+    XOR     $80
+    LD      (HL), A
 
-LOC_AA39:                                   ; LOC_AA39:
-    LD      HL, $7207                       ; HL = $7207 (sprite flicker counter)
-    DEC     (HL)                            ; DEC (HL): decrement flicker counter
-    LD      A, $08                          ; A = $08 (8 sprites)
-    CALL    WR_SPR_NM_TBL                   ; CALL WR_SPR_NM_TBL: write sprite name table to VRAM
-    CALL    SUB_AC6D                        ; CALL SUB_AC6D: sound channel sequencer
+NMI_SPRITES:
+    LD      HL, $7207                       ; the main loop's sync byte
+    DEC     (HL)
+    LD      A, $08                          ; the 8 sprites to the video chip
+    CALL    WR_SPR_NM_TBL
+    CALL    SOUND_TICK                      ; the sound effect
 
-LOC_AA45:                                   ; LOC_AA45:
-    CALL    READ_REGISTER                   ; CALL READ_REGISTER: read VDP status (clears interrupt latch)
-    LD      HL, $70B1                       ; HL = $70B1
-    RES     7, (HL)                         ; RES 7, (HL): clear re-entry guard (NMI done)
+NMI_ACK:
+    CALL    READ_REGISTER                   ; acknowledge the interrupt
+    LD      HL, $70B1
+    RES     7, (HL)
 
-LOC_AA4D:                                   ; LOC_AA4D:
-    POP     HL                              ; POP HL: restore alternate HL
-    POP     DE                              ; POP DE
-    POP     BC                              ; POP BC
-    POP     AF                              ; POP AF: restore alternate register set
-    EX      AF, AF'                         ; EX AF, AF: restore main AF
-    EXX                                     ; EXX: restore main BC/DE/HL
-    POP     IY                              ; POP IY
-    POP     IX                              ; POP IX
-    POP     HL                              ; POP HL
-    POP     DE                              ; POP DE
-    POP     BC                              ; POP BC
-    POP     AF                              ; POP AF: all registers restored
-    RETN                                    ; RETN: return from NMI
+NMI_RETURN:
+    POP     HL
+    POP     DE
+    POP     BC
+    POP     AF
+    EX      AF, AF'
+    EXX
+    POP     IY
+    POP     IX
+    POP     HL
+    POP     DE
+    POP     BC
+    POP     AF
+    RETN
 
-SUB_AA5D:
-    LD      DE, $0001                       ; DE = $0001 (sprite attribute stride)
-    LD      BC, $0A01                       ; BC = $0A01 (B=10 rows, C=$01 tile attribute)
-    CALL    SUB_AAA8                        ; CALL SUB_AAA8: render 10 enemy sprite rows
-    LD      BC, $0801                       ; BC = $0801 (B=8 rows, C=$01)
-    LD      DE, $0017                       ; DE = $0017 (second sprite block offset)
-    CALL    SUB_AAA8                        ; CALL SUB_AAA8: render 8 more enemy sprite rows
-    LD      HL, $AA88                       ; HL = $AA88 (sprite tile table)
-    LD      BC, $030C                       ; BC = $030C (B=3, C=$0C stride)
-    LD      DE, $0020                       ; DE = $0020 (sprite attribute offset)
-    CALL    SUB_AA96                        ; CALL SUB_AA96: SET WORK_BUFFER bit 2 + call SUB_AEA7
-    LD      DE, $0036                       ; DE = $0036 (next sprite block offset)
-    LD      HL, $AA89                       ; HL = $AA89
-    LD      BC, $030A                       ; BC = $030A
-    CALL    SUB_AA96                        ; CALL SUB_AA96: render second set
-    RET                                     ; RET: return from sprite setup
-    DB      $0A, $0A, $00, $00, $00, $00, $00, $00 ; sprite tile table: extra tile IDs row (post-RET start)
-    DB      $00, $00, $0B, $0B, $09, $0C    ; sprite tile table: continued + extra IDs
+; DRAW_HUD_BOXES ($AA5D): the boxes for the inventory (columns 0-11) and the
+; lives (22-31) in rows 0-4. TILE_ROWS with C = 1 draws a run of B tiles.
+DRAW_HUD_BOXES:
+    LD      DE, $0001                       ; top and bottom edges: columns 1-10,
+    LD      BC, $0A01
+    CALL    HUD_BOX_EDGE
+    LD      BC, $0801                       ; columns 23-30
+    LD      DE, $0017
+    CALL    HUD_BOX_EDGE
+    LD      HL, HUD_BOX_ROWS                ; the sides, rows 1-3: columns 0-11 (the inside is
+    LD      BC, $030C                       ; drawn over by the inventory),
+    LD      DE, $0020
+    CALL    TILE_COLUMNS
+    LD      DE, $0036                       ; columns 22-31
+    LD      HL, HUD_BOX_ROW_RIGHT
+    LD      BC, $030A
+    CALL    TILE_COLUMNS
+    RET
 
-SUB_AA96:
-    PUSH    HL                              ; PUSH HL
-    LD      HL, WORK_BUFFER                 ; HL = WORK_BUFFER ($7000)
-    SET     2, (HL)                         ; SET 2, (HL): set bit 2 = VRAM-write-in-progress
-    POP     HL                              ; POP HL
-    CALL    SUB_AEA7                        ; CALL SUB_AEA7: inner VRAM tile write loop
-    PUSH    HL                              ; PUSH HL
-    LD      HL, WORK_BUFFER                 ; HL = WORK_BUFFER
-    RES     2, (HL)                         ; RES 2, (HL): clear VRAM-write flag
-    POP     HL                              ; POP HL
-    RET                                     ; RET
+; The boxes' sides: the left box's row is 12 tiles from here, the right
+; box's 10 from the next.
+HUD_BOX_ROWS:
+    DB      $0A                             ; left edge
 
-SUB_AAA8:
-    LD      HL, $AA94                       ; HL = $AA94 (sprite tile data)
-    CALL    SUB_AEA7                        ; CALL SUB_AEA7: write first block to VRAM
-    DB      $EB                             ; DB $EB: EX DE,HL
-    LD      DE, $0080                       ; DE = $0080 (half-tile stride offset)
-    ADD     HL, DE                          ; ADD HL, DE: advance DE by $80
-    DB      $EB                             ; DB $EB: EX DE,HL (restore)
-    LD      HL, $AA95                       ; HL = $AA95 (second sprite tile data)
-    CALL    SUB_AEA7                        ; CALL SUB_AEA7: write second block to VRAM (offset by $80)
-    RET                                     ; RET: return from SUB_AAA8
+HUD_BOX_ROW_RIGHT:
+    DB      $0A, $00, $00, $00, $00, $00, $00, $00 ; left edge, inside, right edge
+    DB      $00, $0B, $0B
 
-LOC_AABB:
-    LD      A, ($705F)                      ; A = ($705F) game mode flags
-    BIT     5, A                            ; BIT 5, A: tile-skip flag
-    RET     NZ                              ; RET NZ: tile-skip set -> suppress lives display
-    CALL    SUB_A8B7                        ; CALL SUB_A8B7: INC $70AF + SET bit 1 $705F (VRAM-lock enter)
-    LD      HL, $1861                       ; HL = $1861 (VRAM lives display area)
-    LD      DE, $0008                       ; DE = $0008 (clear 8 tiles)
-    XOR     A                               ; A = $00 (fill with blank tile $00)
-    CALL    SUB_AE25                        ; CALL SUB_AE25: clear lives area in VRAM
-    LD      HL, $1877                       ; HL = $1877 (VRAM score display area)
-    LD      DE, $0008                       ; DE = $0008
-    XOR     A                               ; A = $00
-    CALL    SUB_AE25                        ; CALL SUB_AE25: clear score area in VRAM
-    LD      A, ($7049)                      ; A = ($7049) life counter
-    PUSH    AF                              ; PUSH AF: save life count for later
-    CP      $01                             ; CP $01: only 1 life?
-    JR      Z, LOC_AB07                     ; JR Z, LOC_AB07: 1 life -> skip icon rendering
-    DEC     A                               ; DEC A: lives-1 = number of extra life icons
-    LD      HL, $1861                       ; HL = $1861 (lives display row)
-    LD      E, A                            ; E = A (number of icons)
-    CP      $0B                             ; CP $0B: > 11 icons?
-    JR      C, LOC_AB00                     ; JR C, LOC_AB00: fits in first row
-    LD      DE, $000A                       ; DE = $000A (cap at 10 first-row icons)
-    LD      A, $6F                          ; A = $6F (life-icon tile number)
-    CALL    SUB_AE25                        ; CALL SUB_AE25: fill 10 life-icon tiles in row 1
-    POP     AF                              ; POP AF
-    DEC     A                               ; DEC A
-    PUSH    AF                              ; PUSH AF
-    SUB     $0A                             ; SUB $0A: remainder for row 2
-    LD      HL, $1877                       ; HL = $1877 (second lives row)
-    LD      E, $08                          ; E = $08 (cap at 8 for row 2)
-    CP      $09                             ; CP $09
-    JR      NC, LOC_AB00                    ; JR NC, LOC_AB00: overflow -> use cap
-    LD      E, A                            ; E = A (actual remainder count)
+HUD_BOX_TOP:
+    DB      $09                             ; top edge
 
-LOC_AB00:                                   ; LOC_AB00:
-    LD      D, $00                          ; D = $00
-    LD      A, $6F                          ; A = $6F (life-icon tile)
-    CALL    SUB_AE25                        ; CALL SUB_AE25: render life icons in second row
+HUD_BOX_BOTTOM:
+    DB      $0C                             ; bottom edge
 
-LOC_AB07:                                   ; LOC_AB07:
-    POP     AF                              ; POP AF
-    CALL    SUB_A8C3                        ; CALL SUB_A8C3: DEC $70AF, RES bit 1 $705F if zero (VRAM-lock exit)
-    RET                                     ; RET: return from lives/score display
-    DB      $10, $11, $11, $10, $88, $89, $89, $88 ; lives/score tile table: tile IDs for display icons
-    DB      $04, $BA, $06, $B8, $B8, $06, $BA, $04 ; lives/score tile table: continued icon IDs
-    DB      $05, $B9, $B9, $05, $FF         ; lives/score tile table: sentinel $FF
+; TILE_COLUMNS ($AA96): TILE_ROWS with rows 32 apart (B rows of C tiles from
+; HL at name position DE).
+TILE_COLUMNS:
+    PUSH    HL
+    LD      HL, $7000
+    SET     2, (HL)
+    POP     HL
+    CALL    TILE_ROWS
+    PUSH    HL
+    LD      HL, $7000
+    RES     2, (HL)
+    POP     HL
+    RET
 
-LOC_AB21:
-    PUSH    AF                              ; PUSH AF: save matched tile byte
-    INC     HL                              ; INC HL: advance to replacement tile byte
-    LD      A, (HL)                         ; LD A,(HL): A = replacement tile byte
-    LD      (DE), A                         ; LD (DE),A: store replacement to sprite RAM
-    POP     AF                              ; POP AF: restore original tile byte
-    DEC     HL                              ; DEC HL: restore HL to match entry
-    JR      LOC_AB6B                        ; JR LOC_AB6B: advance to next sprite byte
+; HUD_BOX_EDGE ($AAA8): B tiles of the top edge at DE, of the bottom edge 4
+; rows below.
+HUD_BOX_EDGE:
+    LD      HL, HUD_BOX_TOP
+    CALL    TILE_ROWS
+    EX      DE, HL
+    LD      DE, $0080
+    ADD     HL, DE
+    EX      DE, HL
+    LD      HL, HUD_BOX_BOTTOM
+    CALL    TILE_ROWS
+    RET
 
-SUB_AB29:
-    PUSH    HL                              ; PUSH HL: save sprite table pointer
-    PUSH    DE                              ; PUSH DE: save dest pointer
-    PUSH    BC                              ; PUSH BC: save loop params
-    PUSH    AF                              ; PUSH AF: save caller AF
-    CALL    SUB_A8B7                        ; CALL SUB_A8B7: VRAM-lock enter
-    LD      A, $13                          ; LD A,$13: A = $13 (19 sprite rows)
-    LD      ($7002), A                      ; RAM $7002
-    LD      HL, $7200                       ; RAM $7200
-    LD      DE, $00A0                       ; LD DE,$00A0: DE = $00A0 (sprite stride)
-    LD      IY, $0020                       ; LD IY,$0020: IY = $20 (sprite row width)
-    LD      A, $02                          ; LD A,$02: A = $02 (initial row counter)
+; DRAW_LIVES ($AABB): a hat for each spare life: up to 10 at row 3 column 1,
+; up to 8 more at column 23. Not in the treasure room.
+DRAW_LIVES:
+    LD      A, ($705F)
+    BIT     5, A
+    RET     NZ
+    CALL    VRAM_LOCK
+    LD      HL, $1861                       ; clear both rows
+    LD      DE, $0008
+    XOR     A
+    CALL    FILL_VRAM_LOCKED
+    LD      HL, $1877
+    LD      DE, $0008
+    XOR     A
+    CALL    FILL_VRAM_LOCKED
+    LD      A, ($7049)                      ; lives, his own included
+    PUSH    AF
+    CP      $01
+    JR      Z, DRAW_LIVES_DONE
+    DEC     A
+    LD      HL, $1861
+    LD      E, A
+    CP      $0B                             ; more than 10 spare
+    JR      C, DRAW_LIVES_ROW
+    LD      DE, $000A
+    LD      A, $6F                          ; the hat
+    CALL    FILL_VRAM_LOCKED
+    POP     AF
+    DEC     A
+    PUSH    AF
+    SUB     $0A                             ; the rest, up to 8
+    LD      HL, $1877
+    LD      E, $08
+    CP      $09
+    JR      NC, DRAW_LIVES_ROW
+    LD      E, A
 
-LOC_AB41:
-    PUSH    HL                              ; PUSH HL: save current sprite row pointer
-    PUSH    IY                              ; PUSH IY: save row width
-    PUSH    AF                              ; PUSH AF: save row counter
-    PUSH    DE                              ; PUSH DE: save stride
-    CALL    GET_VRAM                        ; CALL GET_VRAM: read tile bytes from VRAM
-    POP     DE                              ; POP DE: restore stride after GET_VRAM
-    PUSH    DE                              ; PUSH DE: re-save stride
-    PUSH    HL                              ; PUSH HL: save VRAM read result
-    PUSH    DE                              ; PUSH DE: save stride second time
-    PUSH    BC                              ; PUSH BC: save outer loop BC
-    LD      DE, $7200                       ; RAM $7200
-    LD      B, $20                          ; LD B,$20: B = $20 (32 bytes per sprite row)
+DRAW_LIVES_ROW:
+    LD      D, $00
+    LD      A, $6F
+    CALL    FILL_VRAM_LOCKED
 
-LOC_AB53:
-    LD      HL, $AB0C                       ; LD HL,$AB0C: HL = match table base
+DRAW_LIVES_DONE:
+    POP     AF
+    CALL    VRAM_UNLOCK
+    RET
 
-LOC_AB56:
-    LD      A, (HL)                         ; LD A,(HL): A = match table entry byte
-    CP      $FF                             ; CP $FF: end of match table?
-    JR      Z, LOC_AB6B                     ; JR Z,LOC_AB6B: yes -> no match, next byte
-    LD      A, (DE)                         ; LD A,(DE): A = sprite data byte
-    CP      $08                             ; CP $08: sprite byte = $08 (blank)?
-    JR      Z, LOC_AB6B                     ; JR Z,LOC_AB6B: blank -> skip
-    CP      $00                             ; CP $00: sprite byte = $00 (empty)?
-    JR      Z, LOC_AB6B                     ; JR Z,LOC_AB6B: empty -> skip
-    CP      (HL)                            ; CP (HL): sprite byte matches table entry?
-    JR      Z, LOC_AB21                     ; JR Z,LOC_AB21: match -> do replacement
-    INC     HL                              ; INC HL: advance match table pointer
-    INC     HL                              ; INC HL: skip replacement byte too
-    JR      LOC_AB56                        ; JR LOC_AB56: check next table entry
+; Tiles that change when a room is mirrored (MIRROR_ROOM): (tile, mirror
+; image) pairs up to $FF. The halves of ladders and their tops swap, and
+; conveyors turn round.
+MIRROR_PAIRS:
+    DB      $10, $11, $11, $10              ; ladder tops in floors
+    DB      $88, $89, $89, $88              ; ladder
+    DB      $04, $BA, $06, $B8              ; conveyor ends
+    DB      $B8, $06, $BA, $04              ; the same, the other way
+    DB      $05, $B9, $B9, $05              ; middles
+    DB      $FF                             ; end
 
-LOC_AB6B:
-    INC     DE                              ; INC DE: advance sprite data pointer
-    DJNZ    LOC_AB53                        ; DJNZ LOC_AB53: loop 32 bytes per row
-    POP     BC                              ; POP BC: restore outer loop BC
-    POP     DE                              ; POP DE: restore stride
-    POP     HL                              ; POP HL: restore sprite row pointer
-    LD      A, ($7002)                      ; RAM $7002
-    DEC     A                               ; DEC A: decrement row counter
-    LD      ($7002), A                      ; RAM $7002
-    CP      $00                             ; CP $00: all rows done?
-    JR      Z, LOC_ABA6                     ; JR Z,LOC_ABA6: yes -> finish
-    LD      BC, $2001                       ; LD BC,$2001: BC = $2001 (stride params)
-    LD      HL, $7200                       ; RAM $7200
-    PUSH    DE                              ; PUSH DE: save stride
-    LD      B, $20                          ; LD B,$20: B = $20 (32 bytes per copy)
-    DB      $EB                             ; DB $EB: EX DE,HL opcode (mid-routine literal byte)
-    LD      HL, $729F                       ; RAM $729F
+MIRROR_TILE:
+    PUSH    AF                              ; the tile's mirror image
+    INC     HL
+    LD      A, (HL)
+    LD      (DE), A
+    POP     AF
+    DEC     HL
+    JR      MIRROR_ROOM_NEXT
 
-LOC_AB89:
-    LD      A, (DE)                         ; LD A,(DE): A = sprite byte
-    LD      (HL), A                         ; LD (HL),A: store to reversed buffer at $729F
-    DEC     HL                              ; DEC HL: step backwards in dest buffer
-    INC     DE                              ; INC DE: advance source pointer
-    DJNZ    LOC_AB89                        ; DJNZ LOC_AB89: copy 32 bytes reversed
-    POP     DE                              ; POP DE: restore stride
-    LD      BC, $0120                       ; LD BC,$0120: BC = 1 row, $20 = 32 cols
-    LD      HL, $7280                       ; RAM $7280
-    CALL    SUB_AEA7                        ; CALL SUB_AEA7: write reversed sprite row
-    POP     HL                              ; POP HL: restore sprite row pointer
-    LD      BC, $0020                       ; LD BC,$0020: BC = $0020 (row advance)
-    ADD     HL, BC                          ; ADD HL,BC: advance HL by one sprite row
-    PUSH    HL                              ; PUSH HL: save advanced pointer
-    POP     DE                              ; POP DE: DE = advanced pointer
-    POP     AF                              ; POP AF: restore row counter
-    POP     IY                              ; POP IY: restore row width
-    POP     HL                              ; POP HL: restore sprite pointer
-    JR      LOC_AB41                        ; JR LOC_AB41: loop for next sprite row
+; MIRROR_ROOM ($AB29): mirror the screen left to right, rows 5-22 (row 23 is
+; read but not written back), a row at a time through the buffer at $7200:
+; tiles swapped for their mirror images (MIRROR_PAIRS), then the row
+; reversed into $7280. The buffer runs over the main loop's sync byte $7207,
+; leaving the room's tile there, which it then waits out ($A5CA).
+MIRROR_ROOM:
+    PUSH    HL
+    PUSH    DE
+    PUSH    BC
+    PUSH    AF
+    CALL    VRAM_LOCK
+    LD      A, $13                          ; 19 rows
+    LD      ($7002), A
+    LD      HL, $7200                       ; from row 5
+    LD      DE, $00A0
+    LD      IY, $0020
+    LD      A, $02
 
-LOC_ABA6:
-    POP     DE                              ; POP DE: restore DE from inner loop
-    POP     AF                              ; POP AF: restore AF from inner loop
-    POP     IY                              ; POP IY: restore IY from inner loop
-    POP     HL                              ; POP HL: restore HL from inner loop
-    POP     AF                              ; POP AF: restore original caller AF
-    POP     BC                              ; POP BC: restore original BC
-    POP     DE                              ; POP DE: restore original DE
-    POP     HL                              ; POP HL: restore original HL
-    CALL    SUB_A8C3                        ; CALL SUB_A8C3: VRAM-lock exit
-    RET                                     ; RET: return from SUB_AB29
-    DB      $FD, $FE, $FE, $FE, $FE, $FE, $FE, $FF ; sprite transform table: input match bytes (start)
-    DB      $FF, $FF, $FF, $FF, $FF, $FF, $00, $FF ; sprite transform table: match/replace pairs
-    DB      $00, $FF, $00, $FF, $00, $FF, $00, $FF ; sprite transform table: sentinel $00 + replace pairs
-    DB      $00, $FF, $00, $00, $00, $00, $00, $00 ; sprite transform: inline Z80 POP IY / LD A,A ...
-    DB      $01, $00, $01, $00, $01, $00, $01, $00 ; sprite transform: inline Z80 LD A,(HL) / AND $0F ...
-    DB      $01, $00, $01, $00, $01, $01, $01, $01 ; sprite transform: inline Z80 continued ...
-    DB      $01, $01, $01, $02, $02, $02, $02, $02 ; sprite transform: inline Z80 PUSH DE+HL / LD HL,$71B2
-    DB      $02, $03, $0E, $08, $DD, $E1, $E3, $23 ; sprite transform: inline Z80 PUSH HL / POP DE ...
-    DB      $7E, $E6, $0F, $FE, $08, $30, $02, $0E ; sprite transform: inline Z80 LD BC,$0600 / LDIR ...
-    DB      $00, $7E, $E6, $F0, $81, $77, $2B, $E3 ; sprite transform: inline Z80 tail POP+RET
-    DB      $DD, $E5, $C9, $E5, $D5, $C5, $21, $B2 ; sprite transform: inline Z80 tail continued
-    DB      $71, $E5, $D1, $13, $36, $FF, $01, $06 ; sprite transform: inline Z80 continued
-    DB      $00, $ED, $B0, $C1, $D1, $E1, $C9 ; sprite transform: end of sprite transform inline data
+MIRROR_ROOM_ROW:
+    PUSH    HL                              ; the row into $7200
+    PUSH    IY
+    PUSH    AF
+    PUSH    DE
+    CALL    GET_VRAM
+    POP     DE
+    PUSH    DE
+    PUSH    HL
+    PUSH    DE
+    PUSH    BC
+    LD      DE, $7200
+    LD      B, $20
 
-SUB_AC1A:
-    PUSH    AF                              ; PUSH AF
-    PUSH    HL                              ; PUSH HL
-    PUSH    DE                              ; PUSH DE
-    PUSH    BC                              ; PUSH BC
-    LD      B, A                            ; B = A (save requested sound ID)
-    LD      HL, $702C                       ; HL = $702C (sound channel flags)
-    BIT     7, (HL)                         ; BIT 7, (HL): is channel active?
-    JR      NZ, LOC_AC5A                    ; JR NZ, LOC_AC5A: active -> priority check before override
+MIRROR_ROOM_TILE:
+    LD      HL, MIRROR_PAIRS
 
-LOC_AC26:                                   ; LOC_AC26:
-    LD      ($702D), A                      ; ($702D) = A: store sound ID
-    SET     7, (HL)                         ; SET 7, (HL): mark channel active (bit 7)
-    SET     5, (HL)                         ; SET 5, (HL): mark sequence-in-progress (bit 5)
-    RES     6, (HL)                         ; RES 6, (HL): clear repeat flag (bit 6)
-    ADD     A, A                            ; ADD A, A: * 2 (2 bytes per sound table entry)
-    LD      HL, $AD0B                       ; HL = $AD0B (sound sequence table)
-    LD      E, A                            ; E = A (index lo)
-    LD      D, $00                          ; D = $00
-    ADD     HL, DE                          ; ADD HL, DE: point to sound sequence entry
-    LD      E, (HL)                         ; E = (HL): load lo byte of sequence pointer
-    INC     HL                              ; INC HL
-    LD      D, (HL)                         ; D = (HL): load hi byte (DE = sequence data pointer)
-    DB      $EB                             ; DB $EB: EX DE,HL (HL = sequence data pointer)
-    LD      A, (HL)                         ; A = (HL): read sequence header: note duration
-    LD      ($7030), A                      ; ($7030) = A: store note duration
-    DEC     A                               ; DEC A
-    LD      ($7032), A                      ; ($7032) = A: store frame-counter target (duration - 1)
-    INC     HL                              ; INC HL
-    LD      A, (HL)                         ; A = (HL): read loop/speed byte
-    LD      ($7035), A                      ; ($7035) = A: store loop control byte
-    AND     $03                             ; AND $03: isolate channel count
-    LD      ($7031), A                      ; ($7031) = A: store channel count
-    INC     HL                              ; INC HL
-    LD      ($702E), HL                     ; ($702E) = HL: store pointer to start of note data
-    XOR     A                               ; A = $00
-    LD      ($7033), A                      ; ($7033) = $00: clear note index
+MIRROR_ROOM_PAIR:
+    LD      A, (HL)
+    CP      $FF
+    JR      Z, MIRROR_ROOM_NEXT
+    LD      A, (DE)                         ; bricks and empty tiles stay
+    CP      $08
+    JR      Z, MIRROR_ROOM_NEXT
+    CP      $00
+    JR      Z, MIRROR_ROOM_NEXT
+    CP      (HL)
+    JR      Z, MIRROR_TILE
+    INC     HL
+    INC     HL
+    JR      MIRROR_ROOM_PAIR
 
-LOC_AC55:
-    POP     BC                              ; POP BC: restore BC (sound driver)
-    POP     DE                              ; POP DE: restore DE
-    POP     HL                              ; POP HL: restore HL
-    POP     AF                              ; POP AF: restore AF
-    RET                                     ; RET: return from sound init routine
+MIRROR_ROOM_NEXT:
+    INC     DE
+    DJNZ    MIRROR_ROOM_TILE
+    POP     BC
+    POP     DE
+    POP     HL
+    LD      A, ($7002)                      ; the last row isn't written
+    DEC     A
+    LD      ($7002), A
+    CP      $00
+    JR      Z, MIRROR_ROOM_DONE
+    LD      BC, $2001                       ; reversed into $7280
+    LD      HL, $7200
+    PUSH    DE
+    LD      B, $20
+    EX      DE, HL
+    LD      HL, $729F
 
-LOC_AC5A:
-    LD      A, ($702D)                      ; A = ($702D) currently playing sound ID
-    CP      B                               ; CP B: is requested ID > current?
-    JR      C, LOC_AC55                     ; JR C, LOC_AC55: requested < current -> lower priority, ignore
-    JR      NZ, LOC_AC6A                    ; JR NZ, LOC_AC6A: different ID -> override
-    CP      $09                             ; CP $09: ID == 9 (special: non-interruptible)?
-    JR      Z, LOC_AC55                     ; JR Z, LOC_AC55: ID 9 -> dont interrupt
-    CP      $01                             ; CP $01: ID == 1?
-    JR      Z, LOC_AC55                     ; JR Z, LOC_AC55: ID 1 -> dont interrupt
+MIRROR_ROOM_REVERSE:
+    LD      A, (DE)
+    LD      (HL), A
+    DEC     HL
+    INC     DE
+    DJNZ    MIRROR_ROOM_REVERSE
+    POP     DE
+    LD      BC, $0120                       ; and back to the screen
+    LD      HL, $7280
+    CALL    TILE_ROWS
+    POP     HL                              ; the next row
+    LD      BC, $0020
+    ADD     HL, BC
+    PUSH    HL
+    POP     DE
+    POP     AF
+    POP     IY
+    POP     HL
+    JR      MIRROR_ROOM_ROW
 
-LOC_AC6A:                                   ; LOC_AC6A:
-    LD      A, B                            ; A = B (use new sound ID)
-    JR      LOC_AC26                        ; JR LOC_AC26: override with new sound
+MIRROR_ROOM_DONE:
+    POP     DE
+    POP     AF
+    POP     IY
+    POP     HL
+    POP     AF
+    POP     BC
+    POP     DE
+    POP     HL
+    CALL    VRAM_UNLOCK
+    RET
 
-SUB_AC6D:
-    LD      HL, $702C                       ; HL = $702C (sound channel flags)
-    BIT     7, (HL)                         ; BIT 7, (HL): channel active?
-    RET     Z                               ; RET Z: inactive -> nothing to do
-    BIT     6, (HL)                         ; BIT 6, (HL): repeat/stop flag
-    JR      Z, LOC_AC82                     ; JR Z, LOC_AC82: not stopping -> advance sequence
+; BOUNCE_ARC ($ABB3): Y steps of a bouncing enemy (taken off its Y: positive
+; is up), read backwards by its counter, 58 frames. The zeros at $ABCD
+; double as black for the colour table.
+BOUNCE_ARC:
+    DB      $FD, $FE, $FE, $FE, $FE, $FE, $FE, $FF
+    DB      $FF, $FF, $FF, $FF, $FF, $FF, $00, $FF
+    DB      $00, $FF, $00, $FF, $00, $FF, $00, $FF
+    DB      $00, $FF
 
-LOC_AC77:                                   ; LOC_AC77:
-    LD      HL, $702C                       ; HL = $702C
-    RES     6, (HL)                         ; RES 6, (HL): clear repeat flag
-    RES     7, (HL)                         ; RES 7, (HL): clear active flag (stop channel)
-    CALL    TURN_OFF_SOUND                  ; CALL TURN_OFF_SOUND: silence SN76489A
-    RET                                     ; RET
+BLACK:
+    DB      $00, $00, $00, $00, $00, $00, $01, $00 ; 6 zeros
+    DB      $01, $00, $01, $00, $01, $00, $01, $00
+    DB      $01, $00, $01, $01, $01, $01, $01, $01
+    DB      $01, $02, $02, $02, $02, $02, $02, $03
 
-LOC_AC82:                                   ; LOC_AC82:
-    LD      HL, $7032                       ; HL = $7032 (frame counter)
-    INC     (HL)                            ; INC (HL): tick frame counter
-    LD      A, (HL)                         ; A = (HL)
-    LD      HL, $7030                       ; HL = $7030 (note duration)
-    CP      (HL)                            ; CP (HL): frame count reached duration?
-    RET     NZ                              ; RET NZ: not yet -> wait
-    XOR     A                               ; A = $00
-    LD      ($7032), A                      ; ($7032) = $00: reset frame counter
-    LD      HL, $702C                       ; HL = $702C
-    BIT     5, (HL)                         ; BIT 5, (HL): sequence-in-progress?
-    JR      Z, LOC_ACCD                     ; JR Z, LOC_ACCD: bit 5 clear -> advance note index only
-    RES     5, (HL)                         ; RES 5, (HL): clear sequence flag
-    LD      HL, ($702E)                     ; HL = ($702E) (note data pointer)
-    LD      A, (HL)                         ; A = (HL): read channel 1 lo nibble
-    AND     $0F                             ; AND $0F
-    OR      $D0                             ; OR $D0: SN76489A channel 1 tone latch command
-    OUT     ($FF), A                        ; OUT ($FF), A: write tone latch to SOUND_PORT
-    LD      A, (HL)                         ; A = (HL): re-read byte
-    AND     $F0                             ; AND $F0
-    RRCA                                    ; RRCA
-    RRCA                                    ; RRCA
-    RRCA                                    ; RRCA
-    RRCA                                    ; RRCA: shift hi nibble to lo
-    OR      $F0                             ; OR $F0: SN76489A channel 1 attenuation command
-    OUT     ($FF), A                        ; OUT ($FF), A: write attenuation to SOUND_PORT
-    INC     HL                              ; INC HL
-    LD      A, (HL)                         ; A = (HL): read channel 2 byte
-    AND     $0F                             ; AND $0F
-    OR      $90                             ; OR $90: SN76489A channel 2 tone latch command
-    OUT     ($FF), A                        ; OUT ($FF), A: write channel 2 tone to SOUND_PORT
-    LD      A, (HL)                         ; A = (HL)
-    AND     $F0                             ; AND $F0
-    RRCA                                    ; RRCA
-    RRCA                                    ; RRCA
-    RRCA                                    ; RRCA
-    RRCA                                    ; RRCA: shift hi nibble
-    OR      $B0                             ; OR $B0: SN76489A channel 2 attenuation command
-    OUT     ($FF), A                        ; OUT ($FF), A: write channel 2 attenuation to SOUND_PORT
-    INC     HL                              ; INC HL
-    LD      ($702E), HL                     ; ($702E) = HL: advance note data pointer by 2 bytes
-    LD      A, $E3                          ; A = $E3: SN76489A noise channel mute command
-    LD      HL, $7035                       ; HL = $7035 (loop/speed control byte)
-    OR      (HL)                            ; OR (HL): merge loop byte
-    OUT     ($FF), A                        ; OUT ($FF), A: write noise control to SOUND_PORT
+; ALIGN_ENEMY ($ABED): snap an enemy's X onto a ladder (0 or 8, mod 16); its
+; sprite entry is under the return address.
+ALIGN_ENEMY:
+    LD      C, $08
+    POP     IX
+    EX      (SP), HL
+    INC     HL
+    LD      A, (HL)
+    AND     $0F
+    CP      $08
+    JR      NC, ALIGN_ENEMY_SET
+    LD      C, $00
 
-LOC_ACCD:                                   ; LOC_ACCD:
-    LD      A, ($7033)                      ; A = ($7033) note index
-    LD      HL, $7031                       ; HL = $7031 (channel count)
-    CP      (HL)                            ; CP (HL): reached last channel?
-    JR      Z, LOC_AD06                     ; JR Z, LOC_AD06: yes -> clear note index
-    LD      HL, $7033                       ; HL = $7033
-    INC     (HL)                            ; INC (HL): advance note index
-    LD      HL, ($702E)                     ; HL = ($702E): load next note data address
-    LD      A, (HL)                         ; A = (HL)
-    CP      $00                             ; CP $00
-    JR      Z, LOC_AC77                     ; JR Z, LOC_AC77: zero = sequence end -> stop channel
-    AND     $FC                             ; AND $FC
-    RRCA                                    ; RRCA
-    RRCA                                    ; RRCA: hi 6 bits = note duration value
-    LD      ($7034), A                      ; ($7034) = A: store note duration
-    LD      A, (HL)                         ; A = (HL): re-read byte
-    AND     $03                             ; AND $03: lo 2 bits = channel flags
-    RLCA                                    ; RLCA
-    RLCA                                    ; RLCA: shift flags to bits 3:2
-    LD      B, A                            ; B = A (flags)
-    LD      A, ($7033)                      ; A = ($7033) note index
-    XOR     $07                             ; XOR $07: toggle 3-bit counter
-    RRCA                                    ; RRCA
-    RRCA                                    ; RRCA
-    RRCA                                    ; RRCA: rotate to get note nibble position
-    OR      B                               ; OR B: merge flags
-    INC     HL                              ; INC HL
-    LD      ($702E), HL                     ; ($702E) = HL: advance note pointer
-    OUT     ($FF), A                        ; OUT ($FF), A: write note command to SOUND_PORT
-    LD      A, ($7034)                      ; A = ($7034) note duration
-    OUT     ($FF), A                        ; OUT ($FF), A: write duration to SOUND_PORT
-    JP      LOC_ACCD                        ; JP LOC_ACCD: loop to next note
+ALIGN_ENEMY_SET:
+    LD      A, (HL)
+    AND     $F0
+    ADD     A, C
+    LD      (HL), A
+    DEC     HL
+    EX      (SP), HL
+    PUSH    IX
+    RET
 
-LOC_AD06:
-    XOR     A                               ; A = $00
-    LD      ($7033), A                      ; ($7033) = $00: clear note index (sequence complete)
-    RET                                     ; RET
-    DB      $6D, $AD, $3A, $AD, $1F, $AD, $8C, $AD ; sound sequence ptr table: lo/hi ptrs into $AD__ data
-    DB      $E0, $AD, $C5, $AD, $9C, $AD, $D2, $AD ; sound sequence ptr table: continued
-    DB      $EB, $AD, $BD, $AD, $04, $02, $F1, $1F ; sound sequence ptr table: end + sound data header
-    DB      $3C, $60, $01, $01, $3C, $60, $01, $01 ; sound data: note sequence 0 (start) freq+dur pairs
-    DB      $3C, $60, $01, $01, $2D, $48, $01, $01 ; sound data: note sequence 0 continued
-    DB      $01, $01, $01, $01, $24, $3C, $00, $08 ; sound data: note sequence 0 continued
-    DB      $02, $F0, $0F, $04, $AB, $2B, $72, $02 ; sound data: note sequence 0 continued
-    DB      $55, $39, $87, $22, $55, $1D, $44, $33 ; sound data: note sequence 0 end + seq 1 header
-    DB      $AB, $2B, $72, $22, $55, $39, $87, $22 ; sound data: note sequence 1 (title / attract theme)
-    DB      $55, $1D, $44, $2B, $72, $1D, $55, $15 ; sound data: note sequence 1 continued
-    DB      $39, $39, $87, $22, $55, $2D, $44, $2B ; sound data: note sequence 1 continued
-    DB      $72, $1D, $55, $1A, $39, $18, $40, $15 ; sound data: note sequence 1 end + seq 2 header
-    DB      $44, $00, $05, $02, $F1, $1F, $30, $39 ; sound data: note sequence 2 (frequency ramp up)
-    DB      $30, $39, $2B, $36, $30, $39, $30, $39 ; "09+60909"
-    DB      $2B, $36, $30, $39, $01, $01, $01, $01 ; sound data: note seq 2 ramp continued
-    DB      $1D, $24, $01, $01, $01, $01, $24, $39 ; sound data: note seq 2 ramp continued
-    DB      $00, $01, $01, $F1, $FF, $9F, $3C, $42 ; sound data: note seq 2 end + seq 3 header
-    DB      $4F, $53, $56, $5F, $67, $71, $78, $86 ; sound data: note seq 3 (pickup / coin SFX)
-    DB      $00, $01, $01, $F2, $FF, $5A, $5D, $5E ; sound data: note seq 3 continued
-    DB      $5F, $61, $63, $65, $67, $68, $69, $6B ; "_aceghik"
-    DB      $6D, $6F, $72, $74, $75, $77, $7A, $7B ; "mortuwz{"
-    DB      $7D, $80, $82, $84, $86, $88, $8A, $8B ; sound data: note seq 3 continued
-    DB      $8D, $00, $01, $05, $2F, $FF, $C0, $FE ; sound data: note seq 3 end + seq 4 header
-    DB      $01, $00, $03, $05, $0F, $FF, $87, $F8 ; sound data: note seq 4 (death / fall SFX)
-    DB      $89, $94, $84, $75, $10, $80, $00, $01 ; sound data: note seq 4 continued
-    DB      $01, $F2, $FF, $73, $6E, $69, $64, $5F ; sound data: note seq 4 continued
-    DB      $5A, $55, $50, $4B, $00, $01, $05, $0F ; sound data: note seq 5 header
-    DB      $FF, $C0, $C0, $01, $C0, $C0, $01, $00 ; sound data: note seq 5 (door open SFX) continued
-    DB      $01, $01, $F1, $FF, $9F, $01, $01, $01 ; sound data: note seq 5 continued
-    DB      $10, $10, $C0, $10, $10, $01, $01, $01 ; sound data: note seq 5 continued
-    DB      $01, $01, $01, $10, $00         ; sound data: note seq 5 end
+; EMPTY_INVENTORY ($AC06): $71B2-$71B8 all $FF.
+EMPTY_INVENTORY:
+    PUSH    HL
+    PUSH    DE
+    PUSH    BC
+    LD      HL, $71B2
+    PUSH    HL
+    POP     DE
+    INC     DE
+    LD      (HL), $FF
+    LD      BC, $0006
+    LDIR
+    POP     BC
+    POP     DE
+    POP     HL
+    RET
 
-SUB_AE00:
-    POP     HL                              ; POP HL: return address -> HL (inline data pointer)
+; =============================================================================
+; SOUND
+; One sound effect plays at a time. PLAY_SOUND ($AC1A) starts effect A
+; unless one with a lower number is playing (the same one starts over, but
+; for 1 and 9); the frame interrupt runs SOUND_TICK ($AC6D), which writes
+; the sound chip (port $FF) itself.
+;
+; RAM: $702C flags (bit 7 playing, bit 5 the next step is the first; bit 6,
+; a stop request, is never set), $702D the effect, $702E the data pointer,
+; $7030 frames per step, $7031 tone channels, $7032 the frame count, $7033
+; the channel count, $7034 scratch, $7035 the control byte.
+; =============================================================================
+PLAY_SOUND:
+    PUSH    AF
+    PUSH    HL
+    PUSH    DE
+    PUSH    BC
+    LD      B, A
+    LD      HL, $702C
+    BIT     7, (HL)
+    JR      NZ, PLAY_SOUND_BUSY
 
-LOC_AE01:                                   ; LOC_AE01: -- data block processing loop
-    PUSH    AF                              ; PUSH AF: save block selector
-    LD      C, (HL)                         ; C = (HL): read bank/page selector
-    INC     HL                              ; INC HL
-    LD      A, (HL)                         ; A = (HL): read block count
-    CP      $00                             ; CP $00: end-of-list?
-    JR      Z, LOC_AE21                     ; JR Z, LOC_AE21: count=0 -> done, return past inline data
-    LD      B, A                            ; B = A (block count)
-    POP     AF                              ; POP AF: restore block selector
-    PUSH    BC                              ; PUSH BC: save count/bank
-    INC     HL                              ; INC HL
-    LD      E, (HL)                         ; E = (HL): read VRAM address lo
-    LD      D, $00                          ; D = $00
-    LD      B, $00                          ; B = $00
-    INC     HL                              ; INC HL
-    LD      C, (HL)                         ; C = (HL): read stride (IY = stride)
-    PUSH    BC                              ; PUSH BC / POP IY: IY = stride value
-    POP     IY                              ; POP IY
-    DB      $E3                             ; DB $E3: EX (SP),HL -- swap HL with stacked data ptr (save/restore)
-    PUSH    AF                              ; PUSH AF: re-save block selector
-    CALL    SUB_AE2E                        ; CALL SUB_AE2E: set VRAM addr + PUT_VRAM for this block
-    POP     AF                              ; POP AF
-    POP     HL                              ; POP HL: restore inline data pointer
-    INC     HL                              ; INC HL: skip to next block entry
-    JR      LOC_AE01                        ; JR LOC_AE01: process next block
+PLAY_SOUND_START:
+    LD      ($702D), A
+    SET     7, (HL)
+    SET     5, (HL)
+    RES     6, (HL)                         ; (never set)
+    ADD     A, A                            ; its header: frames per step,
+    LD      HL, SOUND_EFFECTS
+    LD      E, A
+    LD      D, $00
+    ADD     HL, DE
+    LD      E, (HL)
+    INC     HL
+    LD      D, (HL)
+    EX      DE, HL
+    LD      A, (HL)
+    LD      ($7030), A
+    DEC     A
+    LD      ($7032), A
+    INC     HL                              ; the control byte: bits 0-1 tone channels
+    LD      A, (HL)
+    LD      ($7035), A
+    AND     $03
+    LD      ($7031), A
+    INC     HL
+    LD      ($702E), HL
+    XOR     A
+    LD      ($7033), A
 
-LOC_AE21:
-    POP     AF                              ; POP AF
-    INC     HL                              ; INC HL: skip past end-of-list byte
-    PUSH    HL                              ; PUSH HL: push return address (past inline data)
-    RET                                     ; RET: jump to instruction after inline data block
+PLAY_SOUND_DONE:
+    POP     BC
+    POP     DE
+    POP     HL
+    POP     AF
+    RET
 
-SUB_AE25:
-    CALL    SUB_A8B7                        ; CALL SUB_A8B7: SET bit 1 $705F + INC $70AF (VRAM-lock enter)
-    CALL    FILL_VRAM                       ; CALL FILL_VRAM: fill DE bytes at VRAM address HL with A
-    JR      LOC_AE34                        ; JR LOC_AE34
-    DB      $C9                             ; DB $C9: RET opcode trailing SUB_AE25 (pad/align)
+PLAY_SOUND_BUSY:
+    LD      A, ($702D)                      ; a lower number is playing
+    CP      B
+    JR      C, PLAY_SOUND_DONE
+    JR      NZ, PLAY_SOUND_AGAIN
+    CP      $09                             ; the same one: 9 and 1 play on
+    JR      Z, PLAY_SOUND_DONE
+    CP      $01
+    JR      Z, PLAY_SOUND_DONE
 
-SUB_AE2E:
-    CALL    SUB_A8B7                        ; CALL SUB_A8B7: SET bit 1 $705F + INC $70AF (VRAM-lock enter)
-    CALL    PUT_VRAM                        ; CALL PUT_VRAM: copy IY bytes from HL to VRAM at DE
+PLAY_SOUND_AGAIN:
+    LD      A, B
+    JR      PLAY_SOUND_START
 
-LOC_AE34:
-    CALL    SUB_A8C3                        ; CALL SUB_A8C3: VRAM-lock exit
-    RET                                     ; RET: return from LOC_AE34
-    DB      $DD, $E9                        ; DB $DD,$E9: indirect jump pad after SUB_AE2E
+; SOUND_TICK ($AC6D): every $7030 frames, the effect's next step.
+SOUND_TICK:
+    LD      HL, $702C
+    BIT     7, (HL)
+    RET     Z
+    BIT     6, (HL)
+    JR      Z, SOUND_STEP
 
-SUB_AE3A:
-    JP      (HL)                            ; JP (HL): indirect jump to object handler
-    DB      $7E, $32, $13, $70, $23, $7E, $F5, $23 ; JP (HL): indirect jump via HL
-    DB      $E5, $DD, $E1, $26, $00, $DD, $6E, $01 ; inline Z80: LD A,(HL) / LD ($7013) / INC HL ...
-    DB      $54, $DD, $5E, $00, $7B, $FE, $FF, $28 ; inline Z80: PUSH AF / PUSH IX / POP HL / LD H,$00 ...
-    DB      $21, $01, $01, $00, $F1, $F5, $08, $DD ; inline Z80: LD L,(IX+1) / LD D,H / LD E,(IX+0) ...
-    DB      $E5, $3A, $13, $70, $FE, $00, $20, $06 ; inline Z80: LD A,C / CP $FF / JR Z / LD BC,$0001 ...
-    DB      $08, $CD, $6D, $1F, $18, $04, $08, $CD ; inline Z80: POP AF / PUSH AF / EX AF / PUSH IX ...
-    DB      $6A, $1F, $DD, $E1, $DD, $23, $DD, $23 ; inline Z80: LD A,($7013) / CP $00 / JR NZ / EX AF ...
-    DB      $18, $D1, $F1, $C9              ; inline Z80: CALL $1F6D / JR / EX AF / CALL $1F6A ...
+SOUND_STOP:
+    LD      HL, $702C
+    RES     6, (HL)
+    RES     7, (HL)
+    CALL    TURN_OFF_SOUND                  ; silence
+    RET
 
-SUB_AE77:
-    CALL    SUB_A8B7                        ; CALL SUB_A8B7: VRAM-lock enter
-    LD      HL, $70B3                       ; INC ($70B3): increment blank-display nesting counter
-    INC     (HL)                            ; CALL WRITE_REGISTER ($0182): disable VDP display
-    LD      BC, $0182                       ; LD BC,$0182: BC = $0182 (VDP reg 1, blank)
-    JR      LOC_AE91                        ; JR LOC_AE91: jump to WRITE_REGISTER tail
+SOUND_STEP:
+    LD      HL, $7032                       ; every $7030 frames
+    INC     (HL)
+    LD      A, (HL)
+    LD      HL, $7030
+    CP      (HL)
+    RET     NZ
+    XOR     A
+    LD      ($7032), A
+    LD      HL, $702C
+    BIT     5, (HL)                         ; the first step: volumes
+    JR      Z, SOUND_CHANNEL
+    RES     5, (HL)
+    LD      HL, ($702E)
+    LD      A, (HL)                         ; channel 2 (low nibble), noise (high)
+    AND     $0F
+    OR      $D0
+    OUT     ($FF), A
+    LD      A, (HL)
+    AND     $F0
+    RRCA
+    RRCA
+    RRCA
+    RRCA
+    OR      $F0
+    OUT     ($FF), A
+    INC     HL
+    LD      A, (HL)                         ; channel 0 (low nibble), channel 1 (high)
+    AND     $0F
+    OR      $90
+    OUT     ($FF), A
+    LD      A, (HL)
+    AND     $F0
+    RRCA
+    RRCA
+    RRCA
+    RRCA
+    OR      $B0
+    OUT     ($FF), A
+    INC     HL
+    LD      ($702E), HL
+    LD      A, $E3                          ; noise: following channel 2's tone; white if
+    LD      HL, $7035                       ; control bit 2
+    OR      (HL)
+    OUT     ($FF), A
 
-SUB_AE83:
-    CALL    SUB_A8C3                        ; CALL SUB_A8C3: VRAM-lock exit (DEC $70AF)
-    LD      HL, $70B3                       ; DEC ($70B3): decrement blank-display nesting counter
-    DEC     (HL)                            ; JR NZ: still nested -> keep display off
-    LD      A, (HL)                         ; CALL WRITE_REGISTER ($01E2): re-enable VDP display + sprites
-    CP      $00                             ; CP $00: blank nesting count = 0?
-    RET     NZ                              ; RET NZ: still nested -> keep display off
-    LD      BC, $01E2                       ; LD BC,$01E2: BC = $01E2 (VDP reg 1, enable)
+SOUND_CHANNEL:
+    LD      A, ($7033)                      ; a byte for each tone channel: 2, then 1, 0
+    LD      HL, $7031
+    CP      (HL)
+    JR      Z, SOUND_STEP_DONE
+    LD      HL, $7033
+    INC     (HL)
+    LD      HL, ($702E)
+    LD      A, (HL)
+    CP      $00                             ; 0 ends the effect
+    JR      Z, SOUND_STOP
+    AND     $FC                             ; the period over 4: its high 6 bits...
+    RRCA
+    RRCA
+    LD      ($7034), A
+    LD      A, (HL)                         ; ...and its low 2, into the latch byte
+    AND     $03
+    RLCA
+    RLCA
+    LD      B, A
+    LD      A, ($7033)
+    XOR     $07
+    RRCA
+    RRCA
+    RRCA
+    OR      B
+    INC     HL
+    LD      ($702E), HL
+    OUT     ($FF), A
+    LD      A, ($7034)
+    OUT     ($FF), A
+    JP      SOUND_CHANNEL
 
-LOC_AE91:
-    JP      WRITE_REGISTER                  ; JP WRITE_REGISTER: tail-call to VDP write
-    DB      $C5, $D5, $F5, $06, $FF, $11, $FF, $00 ; inline Z80: PUSH BC+DE+AF / LD B,$FF / LD DE,$00FF
-    DB      $1B, $7A, $B3, $20, $FB, $10, $F6, $F1 ; inline Z80: DEC DE / LD A,D / OR E / JR NZ ...
-    DB      $D1, $C1, $C9                   ; inline Z80: DJNZ / POP AF+DE+BC / RET
+SOUND_STEP_DONE:
+    XOR     A
+    LD      ($7033), A
+    RET
 
-SUB_AEA7:
-    PUSH    IX                              ; PUSH IX
-    PUSH    BC                              ; PUSH BC
-    PUSH    HL                              ; PUSH HL
-    PUSH    DE                              ; PUSH DE
-    PUSH    BC                              ; PUSH BC
-    CALL    SUB_A8B7                        ; CALL SUB_A8B7: VRAM-lock enter
-    LD      B, $00                          ; LD IY from BC: IY = stride (via register rename)
-    PUSH    BC                              ; LOC_AEB8: -- tile write loop
-    POP     IY                              ; POP IY: IY = stride from BC
-    POP     BC                              ; POP BC: BC = original tile block params
-    LD      C, $00                          ; LD C,$00: C = $00 (row column counter)
+; The sound effects: frames per step; the control byte (bits 0-1: tone
+; channels, bit 2: white noise); volumes for the first step (attenuation:
+; channel 2 and noise, then channel 0 and channel 1, low nibble first);
+; then a byte per tone channel per step (the tone's period over 4), up to 0.
+SOUND_EFFECTS:
+    DW      SOUND_EXTRA_LIFE                ; 0 extra life
+    DW      SOUND_BELOW                     ; 1 leaving the bottom row
+    DW      SOUND_PICKUP                    ; 2 item picked up
+    DW      SOUND_SWORD                     ; 3 sword kill
+    DW      SOUND_LAND                      ; 4 landing
+    DW      SOUND_DEATH                     ; 5 death
+    DW      SOUND_POLE                      ; 6 catching a pole
+    DW      SOUND_JUMP                      ; 7 jump
+    DW      SOUND_DOOR                      ; 8 door opened
+    DW      SOUND_FOOTSTEP                  ; 9 footsteps
 
-LOC_AEB8:
-    LD      A, $02                          ; LD A,$02: A = $02 (mode for AE2E/GET_VRAM)
-    PUSH    BC                              ; PUSH BC: save tile block params
-    PUSH    HL                              ; PUSH HL: save VRAM dest
-    PUSH    DE                              ; PUSH DE: save source pointer
-    PUSH    IY                              ; PUSH IY: save stride
-    PUSH    AF                              ; PUSH AF: save mode byte
-    LD      A, (WORK_BUFFER)                ; WORK_BUFFER
-    BIT     4, A                            ; BIT 4,A: WORK_BUFFER bit 4 = read-back mode?
-    JR      Z, LOC_AECD                     ; JR Z, LOC_AECD: bit 4 of WORK_BUFFER clear -> write mode
-    POP     AF                              ; POP AF: restore mode (read-back branch)
-    CALL    GET_VRAM                        ; CALL GET_VRAM: read tile from VRAM (read mode)
-    JR      LOC_AED1                        ; JR LOC_AED1: skip write, go to advance
+SOUND_PICKUP:
+    DB      $04, $02, $F1, $1F              ; 4 frames a step, tones on channels 2 and 1
+    DB      $3C, $60, $01, $01, $3C, $60, $01, $01
+    DB      $3C, $60, $01, $01, $2D, $48, $01, $01
+    DB      $01, $01, $01, $01, $24, $3C, $00
 
-LOC_AECD:                                   ; LOC_AECD:
-    POP     AF                              ; POP AF: restore mode (write branch)
-    CALL    SUB_AE2E                        ; CALL SUB_AE2E: write tile block to VRAM (write mode)
+SOUND_BELOW:
+    DB      $08, $02, $F0, $0F              ; 8 frames a step, tones on channels 2 and 1
+    DB      $04, $AB, $2B, $72, $02, $55, $39, $87
+    DB      $22, $55, $1D, $44, $33, $AB, $2B, $72
+    DB      $22, $55, $39, $87, $22, $55, $1D, $44
+    DB      $2B, $72, $1D, $55, $15, $39, $39, $87
+    DB      $22, $55, $2D, $44, $2B, $72, $1D, $55
+    DB      $1A, $39, $18, $40, $15, $44, $00
 
-LOC_AED1:
-    POP     BC                              ; POP BC: restore tile params
-    POP     DE                              ; POP DE: restore source pointer
-    PUSH    BC                              ; PUSH BC: re-save for stride add below
-    LD      A, (WORK_BUFFER)                ; WORK_BUFFER
-    BIT     2, A                            ; BIT 2, A: stride-double flag (WORK_BUFFER bit 2)?
-    JR      Z, LOC_AEDE                     ; JR Z, LOC_AEDE: single stride
-    LD      BC, $0020                       ; BC = $0020 (double stride = 32 bytes)
+SOUND_EXTRA_LIFE:
+    DB      $05, $02, $F1, $1F              ; 5 frames a step, tones on channels 2 and 1
+    DB      $30, $39, $30, $39, $2B, $36, $30, $39
+    DB      $30, $39, $2B, $36, $30, $39, $01, $01
+    DB      $01, $01, $1D, $24, $01, $01, $01, $01
+    DB      $24, $39, $00
 
-LOC_AEDE:
-    DB      $EB                             ; DB $EB: EX DE,HL opcode (mid-routine literal byte)
-    ADD     HL, BC                          ; ADD HL, BC: advance HL by stride
-    DB      $EB                             ; DB $EB: EX DE,HL opcode (mid-routine literal byte)
-    POP     IY                              ; POP IY: pop IY stride
-    BIT     4, A                            ; BIT 4,A: read-back mode flag in A?
-    JR      Z, LOC_AEEA                     ; JR Z,LOC_AEEA: no -> source advance branch
-    POP     BC                              ; POP BC: pop BC (read-back path)
-    JR      LOC_AEF2                        ; JR LOC_AEF2: skip source advance
+SOUND_SWORD:
+    DB      $01, $01, $F1, $FF              ; every frame, a tone on channel 2
+    DB      $9F, $3C, $42, $4F, $53, $56, $5F, $67
+    DB      $71, $78, $86, $00
 
-LOC_AEEA:
-    POP     HL                              ; POP HL: pop HL (source pointer)
-    BIT     3, A                            ; BIT 3,A: WORK_BUFFER bit 3 = reverse mode?
-    JR      Z, LOC_AEF2                     ; JR Z,LOC_AEF2: no -> skip reverse adjust
-    INC     HL                              ; INC HL: advance source for reverse mode
-    DEC     DE                              ; DEC DE: decrement DE for reverse mode
-    DEC     DE                              ; DEC DE: decrement DE second step
+SOUND_POLE:
+    DB      $01, $01, $F2, $FF              ; every frame, a tone on channel 2
+    DB      $5A, $5D, $5E, $5F, $61, $63, $65, $67
+    DB      $68, $69, $6B, $6D, $6F, $72, $74, $75
+    DB      $77, $7A, $7B, $7D, $80, $82, $84, $86
+    DB      $88, $8A, $8B, $8D, $00
 
-LOC_AEF2:
-    POP     BC                              ; POP BC: restore outer BC counter
-    DJNZ    LOC_AEB8                        ; DJNZ LOC_AEB8: loop B times
-    POP     DE                              ; POP DE: restore outer DE
-    POP     HL                              ; POP HL
-    POP     BC                              ; POP BC
-    POP     IX                              ; POP IX
-    CALL    SUB_A8C3                        ; CALL SUB_A8C3: VRAM-lock exit
-    RET                                     ; RET: return from SUB_AEA7
+SOUND_FOOTSTEP:
+    DB      $01, $05, $2F, $FF              ; every frame, white noise pitched by channel 2
+    DB      $C0, $FE, $01, $00
 
-SUB_AEFE:
-    PUSH    HL                              ; PUSH HL
-    PUSH    BC                              ; PUSH BC
-    PUSH    DE                              ; PUSH DE
-    PUSH    AF                              ; PUSH AF
-    CALL    SUB_A8B7                        ; CALL SUB_A8B7: VRAM-lock enter
-    LD      HL, $1838                       ; HL = $1838 (VRAM score row 1 address)
-    LD      C, $18                          ; C = $18 (write length)
-    CALL    DELAY_LOOP_AF32                 ; CALL DELAY_LOOP_AF32: render score row 1
-    LD      HL, $1858                       ; HL = $1858 (VRAM score row 2 address)
-    LD      C, $28                          ; C = $28 (write length)
-    CALL    DELAY_LOOP_AF32                 ; CALL DELAY_LOOP_AF32: render score row 2
-    LD      HL, $1834                       ; HL = $1834 (score digit area base)
-    LD      A, ($71A6)                      ; A = ($71A6) room difficulty
-    PUSH    AF                              ; PUSH AF
-    ADD     A, $18                          ; ADD A, $18: offset into score digit table
-    CALL    SUB_AF66                        ; CALL SUB_AF66: write score digit block
-    POP     AF                              ; POP AF
-    LD      HL, $1854                       ; HL = $1854 (second score digit area)
-    ADD     A, $28                          ; ADD A, $28
-    CALL    SUB_AF66                        ; CALL SUB_AF66: write second score digit block
-    CALL    SUB_A8C3                        ; CALL SUB_A8C3: VRAM-lock exit
-    POP     AF                              ; POP AF: restore AF
-    POP     DE                              ; POP DE: restore DE
-    POP     BC                              ; POP BC: restore BC
-    POP     HL                              ; POP HL: restore HL
-    RET                                     ; RET: return from SUB_AEFE
+SOUND_DEATH:
+    DB      $03, $05, $0F, $FF              ; 3 frames a step, white noise pitched by channel 2
+    DB      $87, $F8, $89, $94, $84, $75, $10, $80
+    DB      $00
 
-DELAY_LOOP_AF32:
-    LD      B, $03                          ; B = $03 (3 BCD bytes per row)
-    LD      DE, $7017                       ; DE = $7017 (BCD score data buffer at $7015-$7017)
+SOUND_JUMP:
+    DB      $01, $01, $F2, $FF              ; every frame, a tone on channel 2
+    DB      $73, $6E, $69, $64, $5F, $5A, $55, $50
+    DB      $4B, $00
 
-LOC_AF37:                                   ; LOC_AF37: -- BCD digit render loop
-    PUSH    BC                              ; PUSH BC: save outer counter
-    LD      A, (DE)                         ; A = (DE): read BCD byte
-    SRA     A                               ; SRA A
-    SRA     A                               ; SRA A
-    SRA     A                               ; SRA A
-    SRA     A                               ; SRA A: shift hi nibble to lo (upper digit)
-    PUSH    BC                              ; PUSH BC
-    CALL    SUB_AF54                        ; CALL SUB_AF54: render upper BCD digit tile
-    POP     BC                              ; POP BC
-    LD      A, (DE)                         ; A = (DE): re-read same BCD byte
-    CALL    SUB_AF54                        ; CALL SUB_AF54: render lower BCD digit tile (lo nibble)
-    INC     DE                              ; INC DE: advance to next BCD byte
-    POP     BC                              ; POP BC
-    DJNZ    LOC_AF37                        ; DJNZ LOC_AF37: loop 3 times (all BCD digits)
-    LD      HL, $70B1                       ; HL = $70B1 (NMI flags)
-    RES     0, (HL)                         ; RES 0, (HL): clear bit 0 (score-render done)
-    RET                                     ; RET
+SOUND_LAND:
+    DB      $01, $05, $0F, $FF              ; every frame, white noise pitched by channel 2
+    DB      $C0, $C0, $01, $C0, $C0, $01, $00
 
-SUB_AF54:
-    PUSH    HL                              ; PUSH HL
-    LD      HL, $70B1                       ; HL = $70B1 (NMI flags)
-    AND     $0F                             ; AND $0F: isolate lo nibble (BCD digit 0-9)
-    CP      $00                             ; CP $00: zero digit?
-    JR      NZ, LOC_AF62                    ; JR NZ, LOC_AF62: nonzero -> render digit
-    BIT     0, (HL)                         ; BIT 0, (HL): leading-zero suppress flag
-    JR      Z, LOC_AF65                     ; JR Z, LOC_AF65: suppress -> skip (blank tile)
+SOUND_DOOR:
+    DB      $01, $01, $F1, $FF              ; every frame, a tone on channel 2
+    DB      $9F, $01, $01, $01, $10, $10, $C0, $10
+    DB      $10, $01, $01, $01, $01, $01, $01, $10
+    DB      $00
 
-LOC_AF62:                                   ; ADD A, C: digit + base tile offset
-    ADD     A, C                            ; SET 0, (HL): clear leading-zero flag (digit rendered)
-    SET     0, (HL)                         ; SET 0,(HL): set leading-zero suppress flag
+; =============================================================================
+; LOADER ($AE00): copy blocks to video memory, from records inline after the
+; CALL: a source address (DW), a first item and a count (DB), up to a
+; source with a zero high byte. A: the PUT_VRAM table (0 sprite attributes,
+; 1 sprite patterns, 2 names, 3 tile patterns, 4 colours). Returns past the
+; records.
+; =============================================================================
+LOADER:
+    POP     HL                              ; the records
 
-LOC_AF65:
-    POP     HL                              ; POP HL: restore HL after digit write
+LOADER_RECORD:
+    PUSH    AF
+    LD      C, (HL)                         ; the source's low byte...
+    INC     HL
+    LD      A, (HL)                         ; ...and high byte
+    CP      $00
+    JR      Z, LOADER_DONE                  ; zero: the end
+    LD      B, A
+    POP     AF
+    PUSH    BC
+    INC     HL
+    LD      E, (HL)                         ; the first item
+    LD      D, $00
+    LD      B, $00
+    INC     HL
+    LD      C, (HL)                         ; the count
+    PUSH    BC
+    POP     IY
+    EX      (SP), HL                        ; HL: the source
+    PUSH    AF
+    CALL    PUT_VRAM_LOCKED
+    POP     AF
+    POP     HL
+    INC     HL
+    JR      LOADER_RECORD
 
-SUB_AF66:
-    PUSH    DE                              ; PUSH DE
-    LD      DE, $0001                       ; DE = $0001 (one tile per write)
-    CALL    SUB_AE25                        ; CALL SUB_AE25: write one score tile to VRAM
-    INC     HL                              ; INC HL: advance VRAM address
-    POP     DE                              ; POP DE
-    RET                                     ; RET: return from SUB_AF66
+LOADER_DONE:
+    POP     AF
+    INC     HL                              ; past the last byte
+    PUSH    HL
+    RET
 
-SUB_AF70:
-    PUSH    IX                              ; PUSH IX
-    PUSH    IY                              ; PUSH IY
-    PUSH    AF                              ; PUSH AF
-    PUSH    HL                              ; PUSH HL
-    LD      IY, $7017                       ; IY = $7017 (BCD score digits lo -> $7015/$7016/$7017)
-    LD      A, L                            ; A = L (lo byte of score increment)
-    CALL    SUB_AF89                        ; CALL SUB_AF89: add A to $7017 (BCD units)
-    LD      A, H                            ; A = H (hi byte of score increment)
-    CALL    SUB_AF96                        ; CALL SUB_AF96: add H to $7016 (BCD tens/hundreds)
-    POP     HL                              ; POP HL: restore HL
-    POP     AF                              ; POP AF: restore AF
-    POP     IY                              ; POP IY: restore IY
-    POP     IX                              ; POP IX: restore IX
-    RET                                     ; RET: return from SUB_AF70
+; FILL_VRAM_LOCKED ($AE25), PUT_VRAM_LOCKED ($AE2E): the BIOS's FILL_VRAM
+; (A into DE bytes at HL) and PUT_VRAM (IY items of table A from HL at item
+; DE), inside VRAM_LOCK.
+FILL_VRAM_LOCKED:
+    CALL    VRAM_LOCK
+    CALL    FILL_VRAM
+    JR      VRAM_CALL_DONE
+    RET                                     ; (unreachable)
 
-SUB_AF89:
-    SCF                                     ; SCF
-    CCF                                     ; CCF: clear carry for clean ADC
-    ADC     A, (IY+2)                       ; ADC A, (IY+2): BCD add to score digit [IY+2] (units)
-    DAA                                     ; DAA: decimal-adjust result
-    LD      (IY+2), A                       ; (IY+2) = A: store adjusted units
-    JR      NC, LOC_AFC7                    ; JR NC, LOC_AFC7: no carry -> done
-    LD      A, $01                          ; A = $01 (carry into tens)
+PUT_VRAM_LOCKED:
+    CALL    VRAM_LOCK
+    CALL    PUT_VRAM
 
-SUB_AF96:
-    SCF                                     ; SCF
-    CCF                                     ; CCF: clear carry
-    ADC     A, (IY+1)                       ; ADC A, (IY+1): BCD add to score digit [IY+1] (tens)
-    DAA                                     ; DAA: decimal-adjust
-    LD      (IY+1), A                       ; (IY+1) = A: store adjusted tens
-    JR      NC, LOC_AFC7                    ; JR NC, LOC_AFC7: no carry -> done
-    PUSH    HL                              ; PUSH HL
-    PUSH    AF                              ; PUSH AF
-    BIT     0, A                            ; BIT 0, A: odd carry?
-    JR      Z, LOC_AFAE                     ; JR Z, LOC_AFAE: even -> INC life counter
-    LD      A, ($71A6)                      ; A = ($71A6) room difficulty
-    CP      $05                             ; CP $05
-    JR      NC, LOC_AFB2                    ; JR NC, LOC_AFB2: difficulty >= 5 -> skip extra life
+VRAM_CALL_DONE:
+    CALL    VRAM_UNLOCK
+    RET
 
-LOC_AFAE:                                   ; LOC_AFAE:
-    LD      HL, $7049                       ; HL = $7049 (life counter)
-    INC     (HL)                            ; INC (HL): award extra life (score rollover bonus)
+CALL_IX:
+    JP      (IX)                            ; (unused)
 
-LOC_AFB2:                                   ; LOC_AFB2:
-    POP     AF                              ; POP AF
-    POP     HL                              ; POP HL
-    LD      A, $01                          ; A = $01 (carry into hundreds)
-    SCF                                     ; SCF
-    CCF                                     ; CCF
-    ADC     A, (IY+0)                       ; ADC A, (IY+0): BCD add to score digit [IY+0] (hundreds)
-    DAA                                     ; DAA
-    LD      (IY+0), A                       ; (IY+0) = A: store adjusted hundreds
-    CALL    LOC_AABB                        ; CALL LOC_AABB: refresh lives/score display
-    LD      A, $00                          ; A = $00
-    CALL    SUB_AC1A                        ; CALL SUB_AC1A: trigger score-chime sound ($00)
+; CALL_HL ($AE3A): CALL it to call (HL).
+CALL_HL:
+    JP      (HL)
 
-LOC_AFC7:
-    RET                                     ; RET: return from extra-life routine
-    DB      $CB, $0F, $CB, $8C, $30, $02, $CB, $CC ; inline Z80: RRC A / RES 1,(IY+0) / JR NC ...
-    DB      $CB, $0F, $30, $02, $CB, $CC, $CB, $0F ; inline Z80: RRC A / JR NC (x2) / RES 1,(IY+0) ...
-    DB      $30, $02, $CB, $CC, $E6, $1F, $CB, $4C ; inline Z80: AND $1F / BIT 1,(IY+0) / RET Z / INC A ...
-    DB      $C8, $3C, $C9, $CD, $C8, $AF, $4F, $78 ; inline Z80: RET / CALL $AFC8 / LD C,A / LD A,B ...
-    DB      $CD, $C8, $AF, $E6, $1F, $06, $00, $21 ; inline Z80: CALL $AFC8 / AND $1F / LD B,$00 ...
-    DB      $00, $00, $11, $20, $00, $3D, $FE, $00 ; inline Z80: LD HL,$0000 / LD DE,$0020 / DEC A ...
-    DB      $28, $03, $19, $18, $F8, $09, $C9, $FB ; inline Z80: CP $00 / JR Z / ADD HL,DE / JR ...
+; REFLECT_LIST ($AE3B): reflect patterns from a list at HL: the mode (0:
+; upside down, REFLECT_HORIZONTAL; else left-right, REFLECT_VERTICAL), the
+; PUT_VRAM table, then (from, to) pairs up to $FF.
+REFLECT_LIST:
+    LD      A, (HL)
+    LD      ($7013), A
+    INC     HL
+    LD      A, (HL)
+    PUSH    AF
+    INC     HL
+    PUSH    HL
+    POP     IX
 
-; ---- mid-instruction label aliases (EQU) ----
-LOC_801D:        EQU $801D
+REFLECT_LIST_PAIR:
+    LD      H, $00
+    LD      L, (IX+1)
+    LD      D, H
+    LD      E, (IX+0)
+    LD      A, E
+    CP      $FF
+    JR      Z, REFLECT_LIST_DONE
+    LD      BC, $0001
+    POP     AF
+    PUSH    AF
+    EX      AF, AF'
+    PUSH    IX
+    LD      A, ($7013)
+    CP      $00
+    JR      NZ, REFLECT_LIST_MIRROR
+    EX      AF, AF'
+    CALL    REFLECT_HORIZONTAL
+    JR      REFLECT_LIST_NEXT
+
+REFLECT_LIST_MIRROR:
+    EX      AF, AF'
+    CALL    REFLECT_VERTICAL
+
+REFLECT_LIST_NEXT:
+    POP     IX
+    INC     IX
+    INC     IX
+    JR      REFLECT_LIST_PAIR
+
+REFLECT_LIST_DONE:
+    POP     AF
+    RET
+
+; DISPLAY_OFF ($AE77), DISPLAY_ON ($AE83): nest around drawing a screen;
+; register 1 = $82 (display and frame interrupt off), back to $E2.
+DISPLAY_OFF:
+    CALL    VRAM_LOCK
+    LD      HL, $70B3
+    INC     (HL)
+    LD      BC, $0182
+    JR      WRITE_REGISTER_JP
+
+DISPLAY_ON:
+    CALL    VRAM_UNLOCK
+    LD      HL, $70B3
+    DEC     (HL)
+    LD      A, (HL)
+    CP      $00
+    RET     NZ
+    LD      BC, $01E2
+
+WRITE_REGISTER_JP:
+    JP      WRITE_REGISTER
+
+; Unused: a delay.
+DELAY:
+    PUSH    BC
+    PUSH    DE
+    PUSH    AF
+    LD      B, $FF
+
+DELAY_OUTER:
+    LD      DE, $00FF
+
+DELAY_INNER:
+    DEC     DE
+    LD      A, D
+    OR      E
+    JR      NZ, DELAY_INNER
+    DJNZ    DELAY_OUTER
+    POP     AF
+    POP     DE
+    POP     BC
+    RET
+
+; TILE_ROWS ($AEA7): write B rows of C tiles at name position DE, each row
+; the same C tiles from HL. Rows are C apart, or 32 with $7000 bit 2. With
+; $7000 bit 4 it reads instead, on into the buffer at HL (the BIOS leaves HL
+; past what it read). With bit 3 (never set while it runs) each row would
+; start a tile further on in HL and 2 columns further left.
+TILE_ROWS:
+    PUSH    IX
+    PUSH    BC
+    PUSH    HL
+    PUSH    DE
+    PUSH    BC
+    CALL    VRAM_LOCK
+    LD      B, $00
+    PUSH    BC
+    POP     IY
+    POP     BC
+    LD      C, $00
+
+TILE_ROWS_ROW:
+    LD      A, $02                          ; table 2: names
+    PUSH    BC
+    PUSH    HL
+    PUSH    DE
+    PUSH    IY
+    PUSH    AF
+    LD      A, ($7000)
+    BIT     4, A
+    JR      Z, TILE_ROWS_WRITE
+    POP     AF
+    CALL    GET_VRAM
+    JR      TILE_ROWS_NEXT
+
+TILE_ROWS_WRITE:
+    POP     AF
+    CALL    PUT_VRAM_LOCKED
+
+TILE_ROWS_NEXT:
+    POP     BC
+    POP     DE
+    PUSH    BC
+    LD      A, ($7000)
+    BIT     2, A
+    JR      Z, TILE_ROWS_DOWN
+    LD      BC, $0020
+
+TILE_ROWS_DOWN:
+    EX      DE, HL
+    ADD     HL, BC
+    EX      DE, HL
+    POP     IY
+    BIT     4, A
+    JR      Z, TILE_ROWS_SOURCE
+    POP     BC
+    JR      TILE_ROWS_LOOP
+
+TILE_ROWS_SOURCE:
+    POP     HL
+    BIT     3, A
+    JR      Z, TILE_ROWS_LOOP
+    INC     HL
+    DEC     DE
+    DEC     DE
+
+TILE_ROWS_LOOP:
+    POP     BC
+    DJNZ    TILE_ROWS_ROW
+    POP     DE
+    POP     HL
+    POP     BC
+    POP     IX
+    CALL    VRAM_UNLOCK
+    RET
+
+; DRAW_SCORE ($AEFE): the score's six BCD digits in big digits at row 1
+; column 24 (top halves, $18 + digit) and row 2 (bottom halves, $28 +
+; digit), leading zeros blank; the level at column 20.
+DRAW_SCORE:
+    PUSH    HL
+    PUSH    BC
+    PUSH    DE
+    PUSH    AF
+    CALL    VRAM_LOCK
+    LD      HL, $1838
+    LD      C, $18
+    CALL    DRAW_DIGITS
+    LD      HL, $1858
+    LD      C, $28
+    CALL    DRAW_DIGITS
+    LD      HL, $1834                       ; the level
+    LD      A, ($71A6)
+    PUSH    AF
+    ADD     A, $18
+    CALL    PUT_TILE
+    POP     AF
+    LD      HL, $1854
+    ADD     A, $28
+    CALL    PUT_TILE
+    CALL    VRAM_UNLOCK
+    POP     AF
+    POP     DE
+    POP     BC
+    POP     HL
+    RET
+
+; The score's digits, tiles C + digit; $70B1 bit 0: a digit other than 0
+; has been drawn.
+DRAW_DIGITS:
+    LD      B, $03
+    LD      DE, $7017
+
+DRAW_DIGITS_BYTE:
+    PUSH    BC
+    LD      A, (DE)                         ; the high digit,
+    SRA     A
+    SRA     A
+    SRA     A
+    SRA     A
+    PUSH    BC
+    CALL    DRAW_DIGIT
+    POP     BC
+    LD      A, (DE)                         ; the low one
+    CALL    DRAW_DIGIT
+    INC     DE
+    POP     BC
+    DJNZ    DRAW_DIGITS_BYTE
+    LD      HL, $70B1
+    RES     0, (HL)
+    RET
+
+DRAW_DIGIT:
+    PUSH    HL
+    LD      HL, $70B1
+    AND     $0F                             ; a leading 0: blank
+    CP      $00
+    JR      NZ, DRAW_DIGIT_TILE
+    BIT     0, (HL)
+    JR      Z, DRAW_DIGIT_PUT
+
+DRAW_DIGIT_TILE:
+    ADD     A, C
+    SET     0, (HL)
+
+DRAW_DIGIT_PUT:
+    POP     HL
+
+; PUT_TILE ($AF66): tile A at name position HL; HL + 1.
+PUT_TILE:
+    PUSH    DE
+    LD      DE, $0001
+    CALL    FILL_VRAM_LOCKED
+    INC     HL
+    POP     DE
+    RET
+
+; ADD_SCORE ($AF70): add HL (BCD: H hundreds and thousands, L ones and tens)
+; to the score at $7017-$7019 (BCD, highest digits first). Passing a
+; multiple of 10,000 earns a life, but from level 5 on only if the
+; hundreds digit is then even.
+ADD_SCORE:
+    PUSH    IX
+    PUSH    IY
+    PUSH    AF
+    PUSH    HL
+    LD      IY, $7017
+    LD      A, L
+    CALL    ADD_SCORE_LOW
+    LD      A, H
+    CALL    ADD_SCORE_MIDDLE
+    POP     HL
+    POP     AF
+    POP     IY
+    POP     IX
+    RET
+
+ADD_SCORE_LOW:
+    SCF
+    CCF
+    ADC     A, (IY+2)
+    DAA
+    LD      (IY+2), A
+    JR      NC, ADD_SCORE_DONE
+    LD      A, $01
+
+ADD_SCORE_MIDDLE:
+    SCF
+    CCF
+    ADC     A, (IY+1)
+    DAA
+    LD      (IY+1), A
+    JR      NC, ADD_SCORE_DONE
+    PUSH    HL
+    PUSH    AF
+    BIT     0, A                            ; the hundreds digit odd,
+    JR      Z, EXTRA_LIFE
+    LD      A, ($71A6)                      ; and level 5 or later: no life
+    CP      $05
+    JR      NC, ADD_SCORE_HIGH
+
+EXTRA_LIFE:
+    LD      HL, $7049
+    INC     (HL)
+
+ADD_SCORE_HIGH:
+    POP     AF
+    POP     HL
+    LD      A, $01
+    SCF
+    CCF
+    ADC     A, (IY+0)
+    DAA
+    LD      (IY+0), A
+    CALL    DRAW_LIVES                      ; the lives in the HUD
+    LD      A, $00                          ; sound effect 0: extra life
+    CALL    PLAY_SOUND
+
+ADD_SCORE_DONE:
+    RET
+
+; TILE_CEIL ($AFC8): A / 8, rounded up, AND $1F.
+TILE_CEIL:
+    RRC     A
+    RES     1, H
+    JR      NC, TILE_CEIL_2
+    SET     1, H
+
+TILE_CEIL_2:
+    RRC     A
+    JR      NC, TILE_CEIL_3
+    SET     1, H
+
+TILE_CEIL_3:
+    RRC     A
+    JR      NC, TILE_CEIL_ROUND
+    SET     1, H
+
+TILE_CEIL_ROUND:
+    AND     $1F
+    BIT     1, H
+    RET     Z
+    INC     A
+    RET
+
+; TILE_AT ($AFE3): the name table position (HL) of the tile at pixel X = A,
+; Y = B, rounded up: (ceil(Y / 8) - 1) * 32 + ceil(X / 8).
+TILE_AT:
+    CALL    TILE_CEIL
+    LD      C, A
+    LD      A, B
+    CALL    TILE_CEIL
+    AND     $1F
+    LD      B, $00
+    LD      HL, $0000
+    LD      DE, $0020
+
+TILE_AT_ROW:
+    DEC     A
+    CP      $00
+    JR      Z, TILE_AT_DONE
+    ADD     HL, DE
+    JR      TILE_AT_ROW
+
+TILE_AT_DONE:
+    ADD     HL, BC
+    RET
+    DB      $FB                             ; unused
+

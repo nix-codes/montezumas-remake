@@ -24,7 +24,7 @@ var bootLoads = []uint16{
 // Boot returns the video tables as they stand after the game's boot loads.
 func Boot(r *rom.ROM) (*vdp.VRAM, error) {
 	m := &memory{rom: r}
-	// Boot copies two dithered sprite bitmaps into RAM (DELAY_LOOP_827F),
+	// Boot copies two dithered sprite bitmaps into RAM (DITHER_COPY),
 	// which the sprite loader then reads from.
 	for _, c := range []struct{ dst, src uint16 }{{0x7200, 0x86C8}, {0x7220, 0x86A8}} {
 		if err := m.ditherCopy(c.dst, c.src); err != nil {
@@ -62,7 +62,7 @@ func (m *memory) slice(addr uint16, n int) ([]byte, error) {
 }
 
 // ditherCopy copies 16 byte pairs from ROM to RAM, keeping odd pixels of the
-// first byte and even pixels of the second, like DELAY_LOOP_827F.
+// first byte and even pixels of the second, like DITHER_COPY.
 func (m *memory) ditherCopy(dst, src uint16) error {
 	in, err := m.rom.Slice(src, 32)
 	if err != nil {

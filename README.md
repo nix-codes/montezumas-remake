@@ -48,8 +48,8 @@ cartridge; the last 4 KB can't be checked that way.
 
 | Path | Contents |
 |---|---|
-| `original/` | The disassembly (tniASM syntax; the Makefile adapts it for sjasmplus) |
-| `internal/rom` | Loads the ROM; decodes the game's inline VRAM loader calls (`SUB_AE00`) |
+| `original/` | The disassembly, labelled and commented (tniASM syntax; the Makefile adapts it for sjasmplus) |
+| `internal/rom` | Loads the ROM; decodes the game's inline VRAM loader calls (`LOADER`, `$AE00`) |
 | `internal/vdp` | TMS9918A tables and palette; draws tiles and sprites |
 | `internal/gfx` | Replays the game's boot-time VRAM loads; the animated tile tables; the title screen |
 | `cmd/extract` | Writes the boot graphics as PNGs |
@@ -337,9 +337,10 @@ cartridge; the last 4 KB can't be checked that way.
 
 ### Graphics
 
-- `SUB_AE00` takes 4-byte records inline after its `CALL` (source address,
-  item index, item count) and passes each to BIOS `PUT_VRAM`; the preceding
-  `LD A,n` selects the table. `assets/loader-calls.txt` lists every call site.
+- `LOADER` (`$AE00`) takes 4-byte records inline after its `CALL` (source
+  address, item index, item count) and passes each to BIOS `PUT_VRAM`; the
+  preceding `LD A,n` selects the table. `assets/loader-calls.txt` lists
+  every call site.
 - Some tiles (the BIOS font loaded by `LOAD_ASCII`) come from the console BIOS
   ROM, which is not included, so those slots are blank.
 - Tile animation never touches the screen. At boot (`$81DC`) the game fills

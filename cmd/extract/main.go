@@ -114,7 +114,7 @@ func describe(calls []rom.LoaderCall) string {
 		if name == "" {
 			name = "unknown"
 		}
-		fmt.Fprintf(&b, "CALL SUB_AE00 at $%04X  table %d (%s)  %d records\n", c.Addr, c.Table, name, len(c.Records))
+		fmt.Fprintf(&b, "CALL LOADER at $%04X  table %d (%s)  %d records\n", c.Addr, c.Table, name, len(c.Records))
 		for _, rec := range c.Records {
 			fmt.Fprintf(&b, "    src $%04X -> index %3d, count %3d\n", rec.Src, rec.Index, rec.Count)
 		}

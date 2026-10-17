@@ -58,7 +58,7 @@ func (m *Machine) tableBase(table byte) (int, int) {
 
 // copyVRAM implements PUT_VRAM and GET_VRAM: A = table, DE = first item,
 // HL = buffer, IY = item count. Like the BIOS, it leaves HL just past the
-// buffer; the game's tile reader (SUB_AEA7) relies on that.
+// buffer; the game's tile reader (TILE_ROWS) relies on that.
 func (m *Machine) copyVRAM(put bool) {
 	table := m.CPU.AF.Hi
 	index, buf, count := int(m.CPU.DE.U16()), m.CPU.HL.U16(), int(m.CPU.IY)
