@@ -137,6 +137,53 @@ func TestExtraLife(t *testing.T) {
 	}
 }
 
+// TestKillerGone has an enemy, then a creature, kill Joe either side of
+// the level where it stops being removed for good: the enemy on levels 1-4
+// ($928F), the creature on levels 1-3 ($92A2).
+func TestKillerGone(t *testing.T) {
+	for _, c := range []struct {
+		sc    scenario
+		level int
+		gone  bool
+	}{
+		{scenarios[3], 4, true}, {scenarios[3], 5, false}, // the skull, no sword
+		{scenarios[4], 3, true}, {scenarios[4], 4, false}, // a creature
+	} {
+		sc := c.sc
+		sc.carry = nil
+		// The original toggles a creature's bit every time the item task
+		// runs while Joe lies zapped on it, settling once he respawns.
+		// The skull's victim is left lying, before he respawns.
+		sc.frames = 128
+		if sc.room == 2 {
+			sc.frames = 100
+		}
+		sc.name = fmt.Sprintf("room %d level %d", sc.room, c.level)
+		var o *original.Game
+		sc.expect = func(g *play.Game) string {
+			if g.Lives != play.StartLives-1 {
+				return "Joe wasn't killed"
+			}
+			want := o.Peek(uint16(0x70C0+2*sc.room)) != 0 || o.Peek(uint16(0x70C1+2*sc.room)) != 0
+			if got := g.Done[sc.room] != 0; got != want || got != c.gone {
+				return fmt.Sprintf("killer gone: remake %v, original %v, expected %v", got, want, c.gone)
+			}
+			return ""
+		}
+		t.Run(sc.name, func(t *testing.T) {
+			run(t, sc, func(g *play.Game, og *original.Game) {
+				o = og
+				o.Poke(level1, byte(c.level))
+				if err := o.Call(0xAEFE, 10); err != nil { // redraw the level
+					t.Fatal(err)
+				}
+				g.Level = c.level
+				g.RedrawHUD()
+			})
+		})
+	}
+}
+
 // run plays sc in both games, comparing them every frame. setup, if set,
 // changes both games before the first frame.
 func run(t *testing.T, sc scenario, setup func(*play.Game, *original.Game)) {

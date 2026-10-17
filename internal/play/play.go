@@ -567,8 +567,9 @@ func (g *Game) tick(count *int, period int) bool {
 }
 
 // contactTask is the original's $91E5: the amulet's countdown, then
-// whether an enemy touches Joe. With the sword he kills it; without, it
-// kills him. Either way it's gone for good.
+// whether an enemy touches Joe. With the sword he kills it, and it's gone
+// for good; without, it kills him, and is gone for good only on levels
+// 1-4 ($928F).
 func (g *Game) contactTask() {
 	if g.TreasureTimer > 1 {
 		g.TreasureTimer--
@@ -599,8 +600,8 @@ func (g *Game) contactTask() {
 	if slot < 0 {
 		return
 	}
-	g.Done[g.Room] |= 1 << entry
 	if g.Inventory.Remove(items.Sword) {
+		g.Done[g.Room] |= 1 << entry
 		g.Sound.Play(sound.SwordKill)
 		spr := g.Enemies.Sprites[slot]
 		if spr.Colour == 0x0F {
@@ -611,6 +612,9 @@ func (g *Game) contactTask() {
 		spr.Colour = 0
 		g.RedrawHUD()
 		return
+	}
+	if g.Level < 5 {
+		g.Done[g.Room] |= 1 << entry
 	}
 	g.Joe.Kill()
 	g.takeLives()
@@ -639,6 +643,11 @@ func (g *Game) itemTask() {
 		g.recolour = true
 	}
 	g.addScore(res.Points)
+	// A creature that kills Joe is gone for good only on levels 1-3
+	// ($92A2).
+	if res.Creature && g.Level >= 4 {
+		res.Done = nil
+	}
 	for _, e := range res.Done {
 		g.Done[g.Room] |= 1 << e
 	}

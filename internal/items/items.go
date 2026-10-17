@@ -317,7 +317,7 @@ type Result struct {
 	Amulet   bool  // he picked up the amulet: start its timer
 	Picked   byte  // item picked up, or 0
 	Opened   bool  // he opened a door
-	Creature bool  // the creature that killed him (marked in Done)
+	Creature bool  // a creature killed him (marked in Done, which the game drops from level 4)
 }
 
 // Task runs the main-loop task at $8F5F (every 4 frames): open a door Joe
